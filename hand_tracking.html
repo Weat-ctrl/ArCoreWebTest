@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MediaPipe Hand Landmarker (Back Camera)</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    #videoElement {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #canvasElement {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <video id="videoElement" autoplay playsinline></video>
+  <canvas id="canvasElement"></canvas>
+
+  <script type="module">
+    import {
+      FilesetResolver,
+      HandLandmarker,
+      DrawingUtils
+    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+    async function runHandLandmarker() {
+      const video = document.getElementById("videoElement");
+      const canvas = document.getElementById("canvasElement");
+      const canvasCtx = canvas.getContext("2d");
+      const drawingUtils = new DrawingUtils(canvasCtx);
+
+      // Camera setup
+      const constraints = {
+        video: { facingMode: { exact: "environment" } },
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      };
+
+      const filesetResolver = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+      );
+      const handLandmarker = await HandLandmarker.createFromOptions(
+        filesetResolver,
+        {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: "GPU",
+          },
+          numHands: 1,
+          runningMode: "VIDEO",
+        }
+      );
+
+      async function detectHands() {
+        if (video.readyState >= 2) {
+          const results = handLandmarker.detectForVideo(video, Date.now());
+
+          canvasCtx.save();
+          canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+          if (results.landmarks) {
+            for (const landmarks of results.landmarks) {
+              drawingUtils.drawConnectors(
+                landmarks,
+                HandLandmarker.HAND_CONNECTIONS,
+                { color: "#00FF00", lineWidth: 5 }
+              );
+              drawingUtils.drawLandmarks(landmarks, {
+                color: "#FF0000",
+                lineWidth: 2,
+              });
+            }
+          }
+          canvasCtx.restore();
+        }
+        window.requestAnimationFrame(detectHands);
+      }
+
+      detectHands();
+    }
+
+    runHandLandmarker();
+  </script>
+</body>
+  </html>
