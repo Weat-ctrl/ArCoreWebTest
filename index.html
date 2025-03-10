@@ -28,13 +28,13 @@
     async function init() {
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 0, 5); // Look at the origin
+      camera.position.set(0, 0, 5);
 
       renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('threeCanvas'), alpha: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setClearColor(0x000000, 1); // Black background
-      renderer.sortObjects = false; //Test for render order.
+      renderer.setClearColor(0x000000, 1);
+      renderer.sortObjects = false;
 
       window.addEventListener('resize', onWindowResize, false);
 
@@ -61,9 +61,6 @@
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
-      video.onloadedmetadata = () => {
-        detectHands();
-      };
 
       const filesetResolver = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
@@ -79,6 +76,10 @@
           runningMode: "VIDEO",
         }
       );
+
+      video.onloadedmetadata = () => {
+        detectHands();
+      };
 
       async function detectHands() {
         if (video.readyState >= 2) {
@@ -139,7 +140,7 @@
     }
 
     function createSparkles(position) {
-      position = new THREE.Vector3(0, 0, -3); // Force particles to be created at a fixed position
+      position = new THREE.Vector3(0, 0, -3);
       const geometry = new THREE.BufferGeometry();
       const particlesCount = 100;
       const positions = new Float32Array(particlesCount * 3);
@@ -152,48 +153,4 @@
         const z = position.z + (Math.random() - 0.5) * 0.2;
 
         positions[i * 3] = x;
-        positions[i * 3 + 1] = y;
-        positions[i * 3 + 2] = z;
-
-        const color = new THREE.Color();
-        color.setHSL(Math.random(), 1.0, 0.5);
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
-
-        sizes[i] = Math.random() * 0.1;
-      }
-
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-      geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
-
-      const material = new THREE.PointsMaterial({
-        size: 0.1, // Increased particle size
-        vertexColors: true,
-        transparent: true,
-        opacity: 1,
-      });
-
-      const points = new THREE.Points(geometry, material);
-      scene.add(points);
-      return points;
-    }
-
-    function updateSparkles() {
-      if (!sparkles) return;
-      sparkles.material.opacity -= 0.01;
-      if (sparkles.material.opacity <= 0) {
-        removeSparkles();
-      }
-    }
-
-    function removeSparkles() {
-      if (sparkles) {
-        scene.remove(sparkles);
-        sparkles = null;
-      }
-    }
-  </script>
-</body>
-</html>
+        positions[i * 3 + 1
