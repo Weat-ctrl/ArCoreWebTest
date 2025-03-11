@@ -12,6 +12,7 @@
 </head>
 <body>
   <video id="videoElement" autoplay playsinline></video>
+  <canvas id="offscreenCanvas" style="display: none;"></canvas>
   <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
   <script type="module">
     import {
@@ -30,8 +31,8 @@
 
     let sparkles = null;
     let videoTexture, videoMesh;
+    let offscreenCanvas, offscreenContext;
 
-    // Access the back camera using WebRTC
     async function startBackCamera() {
       const video = document.getElementById('videoElement');
       const constraints = {
@@ -41,18 +42,22 @@
       video.srcObject = stream;
       video.play();
 
-      // Create video texture
       videoTexture = new THREE.VideoTexture(video);
       const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
-      videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(), videoMaterial); // Create empty geometry initially
+      videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(), videoMaterial);
       scene.add(videoMesh);
 
+      offscreenCanvas = document.getElementById('offscreenCanvas');
+      offscreenContext = offscreenCanvas.getContext('2d');
+
       video.onloadedmetadata = () => {
-        // Adjust plane geometry to match video aspect ratio
         const aspectRatio = video.videoWidth / video.videoHeight;
-        videoMesh.geometry.dispose(); // Dispose of old geometry
+        videoMesh.geometry.dispose();
         videoMesh.geometry = new THREE.PlaneGeometry(16, 16 / aspectRatio);
         videoMesh.position.set(0, 0, -10);
+        offscreenCanvas.width = video.videoWidth;
+        offscreenCanvas.height = video.videoHeight;
+        detectHands();
       };
 
       const filesetResolver = await FilesetResolver.forVisionTasks(
@@ -68,41 +73,38 @@
           numHands: 1,
           runningMode: "VIDEO",
         }
-      ).then(()=>{
-          video.onloadedmetadata = () => {
-            detectHands();
-          };
+      );
 
-          async function detectHands() {
-            if (video.readyState >= 2) {
-              const results = handLandmarker.detectForVideo(video, Date.now());
+      async function detectHands() {
+        if (video.readyState >= 2) {
+          offscreenContext.drawImage(video.video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+          const results = await handLandmarker.detectForVideo(offscreenCanvas, Date.now());
 
-              if (results.landmarks && results.landmarks[0]) {
-                const landmarks = results.landmarks[0];
-                const isLifted = checkIndexFingerLift(landmarks);
+          if (results.landmarks && results.landmarks[0]) {
+            const landmarks = results.landmarks[0];
+            const isLifted = checkIndexFingerLift(landmarks);
 
-                const indexTip = landmarks[8];
-                const threeDIndexTip = new THREE.Vector3(
-                  (indexTip.x - 0.5) * 4,
-                  -(indexTip.y - 0.5) * 4,
-                  -indexTip.z * 5
-                );
+            const indexTip = landmarks[8];
+            const threeDIndexTip = new THREE.Vector3(
+              (indexTip.x - 0.5) * 4,
+              -(indexTip.y - 0.5) * 4,
+              -indexTip.z * 5
+            );
 
-                if (isLifted && !sparkles) {
-                  sparkles = createSparkles(threeDIndexTip);
-                }
-                if (!isLifted && sparkles) {
-                  removeSparkles();
-                }
-
-                if (sparkles) {
-                  updateSparkles();
-                }
-              }
+            if (isLifted && !sparkles) {
+              sparkles = createSparkles(threeDIndexTip);
             }
-            requestAnimationFrame(detectHands);
+            if (!isLifted && sparkles) {
+              removeSparkles();
+            }
+
+            if (sparkles) {
+              updateSparkles();
+            }
           }
-      });
+        }
+        requestAnimationFrame(detectHands);
+      }
     }
 
     function checkIndexFingerLift(landmarks) {
@@ -190,4 +192,4 @@
     });
   </script>
 </body>
-</html>
+  </html>
