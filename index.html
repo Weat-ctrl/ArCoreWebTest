@@ -13,7 +13,6 @@
 <body>
   <video id="videoElement" autoplay playsinline></video>
   <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest"></script>
   <script type="module">
     import {
       FilesetResolver,
@@ -30,7 +29,7 @@
     camera.position.z = 5;
 
     let sparkles = null;
-    let videoTexture;
+    let videoTexture, videoMesh;
 
     // Access the back camera using WebRTC
     async function startBackCamera() {
@@ -45,10 +44,17 @@
       // Create video texture
       videoTexture = new THREE.VideoTexture(video);
       const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
-      const videoGeometry = new THREE.PlaneGeometry(16, 9); // Adjust aspect ratio as needed
-      const videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-      videoMesh.position.set(0, 0, -10); // Position behind the scene
+      videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(), videoMaterial); // Create empty geometry initially
       scene.add(videoMesh);
+
+      video.onloadedmetadata = () => {
+        // Adjust plane geometry to match video aspect ratio
+        const aspectRatio = video.videoWidth / video.videoHeight;
+        videoMesh.geometry.dispose(); // Dispose of old geometry
+        videoMesh.geometry = new THREE.PlaneGeometry(16, 16 / aspectRatio);
+        videoMesh.position.set(0, 0, -10);
+        detectHands();
+      };
 
       const filesetResolver = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
@@ -64,10 +70,6 @@
           runningMode: "VIDEO",
         }
       );
-
-      video.onloadedmetadata = () => {
-        detectHands();
-      };
 
       async function detectHands() {
         if (video.readyState >= 2) {
