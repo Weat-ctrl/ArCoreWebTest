@@ -28,74 +28,102 @@ let handsWorker;
 function loadPigeon() {
   const loader = new GLTFLoader();
   loader.load('https://cdn.jsdelivr.net/gh/Weat-ctrl/ArCoreWebTest/Pigeon.gltf', (gltf) => {
-    pigeon = gltf.scene;
-    scene.add(pigeon);
-    pigeon.scale.set(0.5, 0.5, 0.5);
-    pigeon.position.set(0, -1, -2);
-    mixer = new THREE.AnimationMixer(pigeon);
-    animations = gltf.animations;
+    try {
+      pigeon = gltf.scene;
+      scene.add(pigeon);
+      pigeon.scale.set(0.5, 0.5, 0.5);
+      pigeon.position.set(0, -1, -2);
+      mixer = new THREE.AnimationMixer(pigeon);
+      animations = gltf.animations;
 
-    pigeon.traverse((child) => {
-      if (child.isMesh) {
-        child.material = new THREE.MeshStandardMaterial({
-          map: child.material.map,
-          color: 0xffffff,
-        });
-      }
-    });
+      pigeon.traverse((child) => {
+        if (child.isMesh) {
+          child.material = new THREE.MeshStandardMaterial({
+            map: child.material.map,
+            color: 0xffffff,
+          });
+        }
+      });
 
-    playAnimation('Flying_Idle');
+      playAnimation('Flying_Idle');
+    } catch (error) {
+      console.error('Error processing Pigeon.gltf:', error);
+    }
+  }, (xhr) => {
+      //progress
+  }, (error) => {
+      console.error("An error happened loading the pigeon gltf file", error);
   });
 }
 
 function playAnimation(name) {
-  if (!mixer || !animations) return;
-  const clip = THREE.AnimationClip.findByName(animations, name);
-  if (clip) {
-    const action = mixer.clipAction(clip);
-    action.reset().play();
+  try {
+    if (!mixer || !animations) return;
+    const clip = THREE.AnimationClip.findByName(animations, name);
+    if (clip) {
+      const action = mixer.clipAction(clip);
+      action.reset().play();
+    }
+  } catch (error) {
+    console.error('Error playing animation:', error);
   }
 }
 
 // --- Particle System ---
 function setupParticleSystem() {
-  const geometry = new THREE.BufferGeometry();
-  const vertices = [];
-  for (let i = 0; i < 20; i++) {
-    const x = THREE.MathUtils.randFloatSpread(1);
-    const y = THREE.MathUtils.randFloatSpread(1);
-    const z = THREE.MathUtils.randFloatSpread(1);
-    vertices.push(x, y, z);
+  try {
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    for (let i = 0; i < 20; i++) {
+      const x = THREE.MathUtils.randFloatSpread(1);
+      const y = THREE.MathUtils.randFloatSpread(1);
+      const z = THREE.MathUtils.randFloatSpread(1);
+      vertices.push(x, y, z);
+    }
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    const material = new THREE.PointsMaterial({ color: 0x00aaff, size: 0.05 });
+    smokeParticles = new THREE.Points(geometry, material);
+    scene.add(smokeParticles);
+    smokeParticles.visible = false;
+  } catch (error) {
+    console.error('Error setting up particle system:', error);
   }
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  const material = new THREE.PointsMaterial({ color: 0x00aaff, size: 0.05 });
-  smokeParticles = new THREE.Points(geometry, material);
-  scene.add(smokeParticles);
-  smokeParticles.visible = false;
 }
 
 function particleBurst() {
-  if (!smokeParticles || !pigeon) return;
-  smokeParticles.position.copy(pigeon.position);
-  smokeParticles.visible = true;
-  setTimeout(() => { smokeParticles.visible = false; }, 500);
+  try {
+    if (!smokeParticles || !pigeon) return;
+    smokeParticles.position.copy(pigeon.position);
+    smokeParticles.visible = true;
+    setTimeout(() => { smokeParticles.visible = false; }, 500);
+  } catch (error) {
+    console.error('Error creating particle burst:', error);
+  }
 }
 
 // --- Web Worker ---
 function setupHandsWorker() {
-  handsWorker = new Worker('handsWorker.js');
-  handsWorker.onmessage = (event) => {
-    onResults(event.data);
-  };
+  try {
+    handsWorker = new Worker('handsWorker.js');
+    handsWorker.onmessage = (event) => {
+      onResults(event.data);
+    };
+  } catch (error) {
+    console.error('Error setting up hands worker:', error);
+  }
 }
 
 // --- onResults Function ---
 function onResults(results) {
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const landmarks = results.multiHandLandmarks[0];
-    if (isPeaceSign(landmarks)) {
-      hitPigeon();
+  try {
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const landmarks = results.multiHandLandmarks[0];
+      if (isPeaceSign(landmarks)) {
+        hitPigeon();
+      }
     }
+  } catch (error) {
+    console.error('Error processing hand results:', error);
   }
 }
 
@@ -111,42 +139,54 @@ function isPeaceSign(landmarks) {
 
 // --- Hit Pigeon ---
 function hitPigeon() {
-  if (hitCount >= maxHits) return;
-  hitCount++;
-  console.log(`Hit count: ${hitCount}`);
-  pigeon.traverse((child) => {
-    if(child.isMesh){
-      child.material.color.set(0xff0000)
-      setTimeout(()=>{child.material.color.set(0xffffff)},200)
+  try {
+    if (hitCount >= maxHits) return;
+    hitCount++;
+    console.log(`Hit count: ${hitCount}`);
+    pigeon.traverse((child) => {
+      if (child.isMesh) {
+        child.material.color.set(0xff0000);
+        setTimeout(() => { child.material.color.set(0xffffff); }, 200);
+      }
+    });
+    playAnimation('HitReact');
+    particleBurst();
+    if (hitCount === maxHits) {
+      setTimeout(() => {
+        playAnimation('Death');
+      }, 1000);
     }
-  });
-  playAnimation('HitReact');
-  particleBurst();
-  if (hitCount === maxHits) {
-    setTimeout(() => {
-      playAnimation('Death');
-    }, 1000);
+  } catch (error) {
+    console.error('Error hitting pigeon:', error);
   }
 }
 
 // --- Camera Setup ---
 async function startCamera() {
-  const video = document.createElement('video');
-  const cameraObj = new Camera(video, {
-    onFrame: async () => {
-      handsWorker.postMessage({ image: video });
-    },
-    width: 640,
-    height: 480,
-  });
-  cameraObj.start();
+  try {
+    const video = document.createElement('video');
+    const cameraObj = new Camera(video, {
+      onFrame: async () => {
+        handsWorker.postMessage({ image: video });
+      },
+      width: 640,
+      height: 480,
+    });
+    cameraObj.start();
+  } catch (error) {
+    console.error('Error starting camera:', error);
+  }
 }
 
 // --- Animation Loop ---
 function animate() {
-  requestAnimationFrame(animate);
-  if (mixer) mixer.update(0.01);
-  renderer.render(scene, camera);
+  try {
+    requestAnimationFrame(animate);
+    if (mixer) mixer.update(0.01);
+    renderer.render(scene, camera);
+  } catch (error) {
+    console.error('Error in animation loop:', error);
+  }
 }
 
 // --- Full Screen ---
@@ -161,16 +201,25 @@ function toggleFullScreen() {
 }
 
 // --- Initialization ---
-loadPigeon();
-setupParticleSystem();
-setupHandsWorker();
-startCamera();
-animate();
+try {
+  loadPigeon();
+  setupParticleSystem();
+  setupHandsWorker();
+  startCamera();
+  animate();
+} catch (error) {
+  console.error('Initialization error:', error);
+}
 
+// --- Event Listeners ---
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  try {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  } catch (error) {
+    console.error('Error resizing window:', error);
+  }
 });
 
 window.addEventListener('click', toggleFullScreen);
