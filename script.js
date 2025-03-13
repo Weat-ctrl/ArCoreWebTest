@@ -1,185 +1,176 @@
-// Set up Three.js scene
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.146.0/examples/jsm/loaders/GLTFLoader.js';
+import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+import { Hands } from 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+
+// --- Three.js Setup ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Variables
-let cube;
+// --- Lighting ---
+const ambientLight = new THREE.AmbientLight(0x404040);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+directionalLight.position.set(1, 1, 1);
+scene.add(directionalLight);
+
+// --- Variables ---
+let pigeon, mixer, animations;
 let hitCount = 0;
 const maxHits = 5;
 let smokeParticles;
+let handsWorker;
 
-// Create a cube
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-cube.position.set(0, 0, -2); // Position the cube
-scene.add(cube);
+// --- Model Loading ---
+function loadPigeon() {
+  const loader = new GLTFLoader();
+  loader.load('https://cdn.jsdelivr.net/gh/Weat-ctrl/ArCoreWebTest/pigeon.gltf', (gltf) => {
+    pigeon = gltf.scene;
+    scene.add(pigeon);
+    pigeon.scale.set(0.5, 0.5, 0.5);
+    pigeon.position.set(0, -1, -2);
+    mixer = new THREE.AnimationMixer(pigeon);
+    animations = gltf.animations;
 
-// Set up Three.js particle system
-function setupParticleSystem() {
-  const particleCount = 50; // Reduced from 100
-  const particles = new THREE.BufferGeometry();
-  const particlePositions = new Float32Array(particleCount * 3);
-
-  for (let i = 0; i < particleCount; i++) {
-    particlePositions[i * 3] = (Math.random() - 0.5) * 2; // x
-    particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 2; // y
-    particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 2; // z
-  }
-
-  particles.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-
-  const particleMaterial = new THREE.PointsMaterial({
-    size: 0.1,
-    color: 0x00aaff, // Blue color
-    transparent: true,
-    opacity: 0.5,
-  });
-
-  smokeParticles = new THREE.Points(particles, particleMaterial);
-  scene.add(smokeParticles);
-}
-
-// Access the front camera using WebRTC
-async function startFrontCamera() {
-  const constraints = {
-    video: {
-      facingMode: 'user',
-      width: 640, // Lower resolution
-      height: 480,
-      frameRate: 15, // Lower frame rate
-    },
-  };
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  const video = document.createElement('video');
-  video.srcObject = stream;
-  video.play();
-
-  // Create a texture from the video feed
-  const videoTexture = new THREE.VideoTexture(video);
-  const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
-  const videoGeometry = new THREE.PlaneGeometry(16, 9); // Adjust aspect ratio as needed
-  const videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
-  videoMesh.position.set(0, 0, -10); // Move the camera feed plane further back
-  scene.add(videoMesh);
-
-  // Initialize MediaPipe Hands
-  const hands = new Hands({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-  });
-
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 0, // Use 0 for faster performance
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-  });
-
-  hands.onResults(onResults);
-
-  // Start processing the video feed
-  let lastFrameTime = 0;
-  const frameRate = 15; // Process 15 frames per second
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      const now = performance.now();
-      if (now - lastFrameTime >= 1000 / frameRate) {
-        await hands.send({ image: video });
-        lastFrameTime = now;
+    pigeon.traverse((child) => {
+      if (child.isMesh) {
+        child.material = new THREE.MeshStandardMaterial({
+          map: child.material.map,
+          color: 0xffffff,
+        });
       }
-    },
-    width: 640,
-    height: 480,
+    });
+
+    playAnimation('Flying_Idle');
   });
-  camera.start();
 }
 
-// Handle hand landmarks
+function playAnimation(name) {
+  if (!mixer || !animations) return;
+  const clip = THREE.AnimationClip.findByName(animations, name);
+  if (clip) {
+    const action = mixer.clipAction(clip);
+    action.reset().play();
+  }
+}
+
+// --- Particle System ---
+function setupParticleSystem() {
+  const geometry = new THREE.BufferGeometry();
+  const vertices = [];
+  for (let i = 0; i < 20; i++) {
+    const x = THREE.MathUtils.randFloatSpread(1);
+    const y = THREE.MathUtils.randFloatSpread(1);
+    const z = THREE.MathUtils.randFloatSpread(1);
+    vertices.push(x, y, z);
+  }
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  const material = new THREE.PointsMaterial({ color: 0x00aaff, size: 0.05 });
+  smokeParticles = new THREE.Points(geometry, material);
+  scene.add(smokeParticles);
+  smokeParticles.visible = false;
+}
+
+function particleBurst() {
+  if (!smokeParticles || !pigeon) return;
+  smokeParticles.position.copy(pigeon.position);
+  smokeParticles.visible = true;
+  setTimeout(() => { smokeParticles.visible = false; }, 500);
+}
+
+// --- Web Worker ---
+function setupHandsWorker() {
+  handsWorker = new Worker('handsWorker.js');
+  handsWorker.onmessage = (event) => {
+    onResults(event.data);
+  };
+}
+
+// --- onResults Function ---
 function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const landmarks = results.multiHandLandmarks[0];
-
-    // Check for peace sign gesture
     if (isPeaceSign(landmarks)) {
-      hitCube();
+      hitPigeon();
     }
   }
 }
 
-// Detect peace sign gesture
+// --- Gesture Detection ---
 function isPeaceSign(landmarks) {
-  const indexFinger = landmarks[8];
-  const middleFinger = landmarks[12];
-  const ringFinger = landmarks[16];
-  const pinkyFinger = landmarks[20];
-
   return (
-    indexFinger.y < middleFinger.y && // Index and middle fingers are up
-    ringFinger.y > middleFinger.y && // Ring and pinky fingers are down
-    pinkyFinger.y > middleFinger.y
+    landmarks[8].y < landmarks[7].y &&
+    landmarks[12].y < landmarks[11].y &&
+    landmarks[16].y > landmarks[13].y &&
+    landmarks[20].y > landmarks[17].y
   );
 }
 
-// Hit the cube
-function hitCube() {
+// --- Hit Pigeon ---
+function hitPigeon() {
   if (hitCount >= maxHits) return;
-
   hitCount++;
   console.log(`Hit count: ${hitCount}`);
-
-  // Change cube color to red temporarily
-  cube.material.color.set(0xff0000);
-  setTimeout(() => {
-    cube.material.color.set(0x00ff00); // Reset color
-  }, 200);
-
-  // Add particle effect
-  addParticleEffect();
-
-  // On fifth hit, remove the cube
+  pigeon.traverse((child) => {
+    if(child.isMesh){
+      child.material.color.set(0xff0000)
+      setTimeout(()=>{child.material.color.set(0xffffff)},200)
+    }
+  });
+  playAnimation('HitReact');
+  particleBurst();
   if (hitCount === maxHits) {
     setTimeout(() => {
-      cube.visible = false;
+      playAnimation('Death');
     }, 1000);
   }
 }
 
-// Add particle effect
-function addParticleEffect() {
-  const positions = smokeParticles.geometry.attributes.position.array;
-
-  for (let i = 0; i < positions.length; i += 3) {
-    positions[i] = cube.position.x + (Math.random() - 0.5) * 2; // x
-    positions[i + 1] = cube.position.y + (Math.random() - 0.5) * 2; // y
-    positions[i + 2] = cube.position.z + (Math.random() - 0.5) * 2; // z
-  }
-
-  smokeParticles.geometry.attributes.position.needsUpdate = true;
+// --- Camera Setup ---
+async function startCamera() {
+  const video = document.createElement('video');
+  const cameraObj = new Camera(video, {
+    onFrame: async () => {
+      handsWorker.postMessage({ image: video });
+    },
+    width: 640,
+    height: 480,
+  });
+  cameraObj.start();
 }
 
-// Render loop
+// --- Animation Loop ---
 function animate() {
   requestAnimationFrame(animate);
-
-  // Rotate the cube (optional)
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-
-  // Render the scene
+  if (mixer) mixer.update(0.01);
   renderer.render(scene, camera);
 }
 
-// Start the front camera and animation
-startFrontCamera();
+// --- Full Screen ---
+function toggleFullScreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
+}
+
+// --- Initialization ---
+loadPigeon();
 setupParticleSystem();
+setupHandsWorker();
+startCamera();
 animate();
 
-// Handle window resizing
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+window.addEventListener('click', toggleFullScreen);
