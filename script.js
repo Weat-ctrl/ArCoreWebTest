@@ -6,21 +6,44 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Variables
-let cube;
+let pigeonModel;
 let hitCount = 0;
 const maxHits = 5;
 let smokeParticles;
+let mixer; // Animation mixer
+let animations = {}; // Store animations
+let currentAction; // Current animation action
 
-// Create a cube
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-cube.position.set(0, 0, -2); // Position the cube
-scene.add(cube);
+// Load the Pigeon.gltf model
+const loader = new THREE.GLTFLoader();
+const pigeonModelUrl = 'https://raw.githubusercontent.com/Weat-ctrl/ArCoreWebTest/main/Pigeon.gltf'; // Replace with your GitHub raw URL
+loader.load(
+  pigeonModelUrl,
+  (gltf) => {
+    pigeonModel = gltf.scene;
+    scene.add(pigeonModel);
+
+    // Set up animations
+    mixer = new THREE.AnimationMixer(pigeonModel);
+    animations = {
+      Flying_Idle: mixer.clipAction(gltf.animations.find((clip) => clip.name === 'Flying_Idle')),
+      HitReact: mixer.clipAction(gltf.animations.find((clip) => clip.name === 'HitReact')),
+      Death: mixer.clipAction(gltf.animations.find((clip) => clip.name === 'Death')),
+    };
+
+    // Start with Flying_Idle animation
+    currentAction = animations.Flying_Idle;
+    currentAction.play();
+  },
+  undefined,
+  (error) => {
+    console.error('Error loading GLTF model:', error);
+  }
+);
 
 // Set up Three.js particle system
 function setupParticleSystem() {
-  const particleCount = 50; // Reduced from 100
+  const particleCount = 100;
   const particles = new THREE.BufferGeometry();
   const particlePositions = new Float32Array(particleCount * 3);
 
@@ -34,7 +57,7 @@ function setupParticleSystem() {
 
   const particleMaterial = new THREE.PointsMaterial({
     size: 0.1,
-    color: 0x00aaff, // Blue color
+    color: 0xffffff, // White color for puff effect
     transparent: true,
     opacity: 0.5,
   });
@@ -48,9 +71,9 @@ async function startFrontCamera() {
   const constraints = {
     video: {
       facingMode: 'user',
-      width: 640, // Lower resolution
-      height: 480,
-      frameRate: 15, // Lower frame rate
+      width: window.innerWidth,
+      height: window.innerHeight,
+      frameRate: 15,
     },
   };
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -73,7 +96,7 @@ async function startFrontCamera() {
 
   hands.setOptions({
     maxNumHands: 1,
-    modelComplexity: 0, // Use 0 for faster performance
+    modelComplexity: 0,
     minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
@@ -82,7 +105,7 @@ async function startFrontCamera() {
 
   // Start processing the video feed
   let lastFrameTime = 0;
-  const frameRate = 15; // Process 15 frames per second
+  const frameRate = 15;
   const camera = new Camera(video, {
     onFrame: async () => {
       const now = performance.now();
@@ -91,8 +114,8 @@ async function startFrontCamera() {
         lastFrameTime = now;
       }
     },
-    width: 640,
-    height: 480,
+    width: window.innerWidth,
+    height: window.innerHeight,
   });
   camera.start();
 }
@@ -104,7 +127,7 @@ function onResults(results) {
 
     // Check for peace sign gesture
     if (isPeaceSign(landmarks)) {
-      hitCube();
+      hitPigeon();
     }
   }
 }
@@ -123,27 +146,49 @@ function isPeaceSign(landmarks) {
   );
 }
 
-// Hit the cube
-function hitCube() {
+// Hit the pigeon
+function hitPigeon() {
   if (hitCount >= maxHits) return;
 
   hitCount++;
   console.log(`Hit count: ${hitCount}`);
 
-  // Change cube color to red temporarily
-  cube.material.color.set(0xff0000);
+  // Play HitReact animation
+  currentAction.stop();
+  currentAction = animations.HitReact;
+  currentAction.reset().play();
+
+  // Change model color to red temporarily
+  pigeonModel.traverse((child) => {
+    if (child.isMesh) {
+      child.material.color.set(0xff0000);
+    }
+  });
   setTimeout(() => {
-    cube.material.color.set(0x00ff00); // Reset color
+    pigeonModel.traverse((child) => {
+      if (child.isMesh) {
+        child.material.color.set(0xffffff); // Reset color
+      }
+    });
   }, 200);
 
   // Add particle effect
   addParticleEffect();
 
-  // On fifth hit, remove the cube
+  // On fifth hit, play Death animation and disappear
   if (hitCount === maxHits) {
+    currentAction.stop();
+    currentAction = animations.Death;
+    currentAction.reset().play();
+
+    currentAction.clampWhenFinished = true;
+    currentAction.loop = THREE.LoopOnce;
+    currentAction.play();
+
     setTimeout(() => {
-      cube.visible = false;
-    }, 1000);
+      pigeonModel.visible = false;
+      addParticleEffect(); // Final puff of particles
+    }, 2000); // Adjust delay to match Death animation duration
   }
 }
 
@@ -152,9 +197,9 @@ function addParticleEffect() {
   const positions = smokeParticles.geometry.attributes.position.array;
 
   for (let i = 0; i < positions.length; i += 3) {
-    positions[i] = cube.position.x + (Math.random() - 0.5) * 2; // x
-    positions[i + 1] = cube.position.y + (Math.random() - 0.5) * 2; // y
-    positions[i + 2] = cube.position.z + (Math.random() - 0.5) * 2; // z
+    positions[i] = (Math.random() - 0.5) * 2; // x
+    positions[i + 1] = (Math.random() - 0.5) * 2; // y
+    positions[i + 2] = (Math.random() - 0.5) * 2; // z
   }
 
   smokeParticles.geometry.attributes.position.needsUpdate = true;
@@ -164,9 +209,10 @@ function addParticleEffect() {
 function animate() {
   requestAnimationFrame(animate);
 
-  // Rotate the cube (optional)
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
+  // Update animation mixer
+  if (mixer) {
+    mixer.update(0.01);
+  }
 
   // Render the scene
   renderer.render(scene, camera);
