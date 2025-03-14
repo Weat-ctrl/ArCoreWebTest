@@ -24,142 +24,139 @@ let smokeParticles;
 
 // --- Model Loading ---
 function loadPigeon() {
-  const loader = new GLTFLoader();
-  loader.load('https://Weat-ctrl.github.io/ArCoreWebTest/pigeon.gltf', (gltf) => {
-    pigeon = gltf.scene;
-    scene.add(pigeon);
-    pigeon.scale.set(0.5, 0.5, 0.5);
-    pigeon.position.set(0, -1, -2);
-    mixer = new THREE.AnimationMixer(pigeon);
-    animations = gltf.animations;
+    const loader = new GLTFLoader();
+    loader.load('https://Weat-ctrl.github.io/ArCoreWebTest/Pigeon.gltf', (gltf) => {
+        pigeon = gltf.scene;
+        scene.add(pigeon);
+        pigeon.scale.set(0.5, 0.5, 0.5);
+        pigeon.position.set(0, 0, -2);
+        mixer = new THREE.AnimationMixer(pigeon);
+        animations = gltf.animations;
 
-    pigeon.traverse((child) => {
-      if (child.isMesh) {
-        child.material = new THREE.MeshStandardMaterial({
-          map: child.material.map,
-          color: 0xffffff,
+        pigeon.traverse((child) => {
+            if (child.isMesh) {
+                child.material = new THREE.MeshStandardMaterial({
+                    map: child.material.map,
+                    color: 0xffffff,
+                });
+            }
         });
-      }
-    });
 
-    playAnimation('Flying_Idle');
-  });
+        playAnimation('Flying_Idle');
+    });
 }
 
 function playAnimation(name) {
-  if (!mixer || !animations) return;
-  const clip = THREE.AnimationClip.findByName(animations, name);
-  if (clip) {
-    const action = mixer.clipAction(clip);
-    action.reset().play();
-  }
+    if (!mixer || !animations) return;
+    const clip = THREE.AnimationClip.findByName(animations, name);
+    if (clip) {
+        const action = mixer.clipAction(clip);
+        action.reset().play();
+    }
 }
 
 // --- Particle System ---
 function setupParticleSystem() {
-  const geometry = new THREE.BufferGeometry();
-  const vertices = [];
-  for (let i = 0; i < 20; i++) {
-    const x = THREE.MathUtils.randFloatSpread(1);
-    const y = THREE.MathUtils.randFloatSpread(1);
-    const z = THREE.MathUtils.randFloatSpread(1);
-    vertices.push(x, y, z);
-  }
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  const material = new THREE.PointsMaterial({ color: 0x00aaff, size: 0.05 });
-  smokeParticles = new THREE.Points(geometry, material);
-  scene.add(smokeParticles);
-  smokeParticles.visible = false;
-}
+    const particleCount = 50;
+    const particles = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
 
-function particleBurst() {
-  if (!smokeParticles || !pigeon) return;
-  smokeParticles.position.copy(pigeon.position);
-  smokeParticles.visible = true;
-  setTimeout(() => { smokeParticles.visible = false; }, 500);
+    for (let i = 0; i < particleCount; i++) {
+        particlePositions[i * 3] = (Math.random() - 0.5) * 2;
+        particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+        particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 2;
+    }
+
+    particles.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 0.1,
+        color: 0x00aaff,
+        transparent: true,
+        opacity: 0.5,
+    });
+
+    smokeParticles = new THREE.Points(particles, particleMaterial);
+    scene.add(smokeParticles);
 }
 
 // --- Camera Setup ---
-async function startCamera() {
-  const video = document.getElementById('video');
-  const cameraObj = new Camera(video, {
-    onFrame: async () => {
-      await hands.send({ image: video });
-    },
-    width: 640,
-    height: 480,
-  });
-  cameraObj.start();
+async function startFrontCamera() {
+    const video = document.getElementById('video');
+    const constraints = {
+        video: {
+            facingMode: 'user',
+            width: 640,
+            height: 480,
+            frameRate: 15,
+        },
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    video.play();
 
-  const hands = new Hands({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-  });
+    const videoTexture = new THREE.VideoTexture(video);
+    const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+    const videoGeometry = new THREE.PlaneGeometry(16, 9);
+    const videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
+    videoMesh.position.set(0, 0, -10);
+    scene.add(videoMesh);
 
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7,
-  });
+    const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
 
-  hands.onResults(onResults);
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+    });
+
+    hands.onResults(onResults);
+
+    let lastFrameTime = 0;
+    const frameRate = 15;
+    const cameraObj = new Camera(video, {
+        onFrame: async () => {
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000 / frameRate) {
+                await hands.send({ image: video });
+                lastFrameTime = now;
+            }
+        },
+        width: 640,
+        height: 480,
+    });
+    cameraObj.start();
 }
 
 // --- onResults Function ---
 function onResults(results) {
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const landmarks = results.multiHandLandmarks[0];
-    if (isPeaceSign(landmarks)) {
-      hitPigeon();
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+        if (isPeaceSign(landmarks)) {
+            hitPigeon();
+        }
     }
-  }
 }
 
 // --- Gesture Detection ---
 function isPeaceSign(landmarks) {
-  return (
-    landmarks[8].y < landmarks[7].y &&
-    landmarks[12].y < landmarks[11].y &&
-    landmarks[16].y > landmarks[13].y &&
-    landmarks[20].y > landmarks[17].y
-  );
+    return (
+        landmarks[8].y < landmarks[7].y &&
+        landmarks[12].y < landmarks[11].y &&
+        landmarks[16].y > landmarks[13].y &&
+        landmarks[20].y > landmarks[17].y
+    );
 }
 
 // --- Hit Pigeon ---
 function hitPigeon() {
-  if (hitCount >= maxHits) return;
-  hitCount++;
-  console.log(`Hit count: ${hitCount}`);
-  pigeon.traverse((child) => {
-    if(child.isMesh){
-      child.material.color.set(0xff0000)
-      setTimeout(()=>{child.material.color.set(0xffffff)},200)
-    }
-  });
-  playAnimation('HitReact');
-  particleBurst();
-  if (hitCount === maxHits) {
-    setTimeout(() => {
-      playAnimation('Death');
-    }, 1000);
-  }
-}
-
-// --- Animation Loop ---
-function animate() {
-  requestAnimationFrame(animate);
-  if (mixer) mixer.update(0.01);
-  renderer.render(scene, camera);
-}
-
-// --- Initialization ---
-loadPigeon();
-setupParticleSystem();
-startCamera();
-animate();
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+    if (hitCount >= maxHits) return;
+    hitCount++;
+    console.log(`Hit count: ${hitCount}`);
+    pigeon.traverse((child) => {
+        if (child.isMesh) {
+            child.material.color.set(0xff0000);
+            setTimeout(() => { child.material.color
