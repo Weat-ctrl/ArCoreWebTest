@@ -25,7 +25,7 @@ let smokeParticles;
 // --- Model Loading ---
 function loadPigeon() {
   const loader = new GLTFLoader();
-  loader.load('https://cdn.jsdelivr.net/gh/Weat-ctrl/ArCoreWebTest/Pigeon.gltf', (gltf) => {
+  loader.load('https://Weat-ctrl.github.io/ArCoreWebTest/pigeon.gltf', (gltf) => {
     pigeon = gltf.scene;
     scene.add(pigeon);
     pigeon.scale.set(0.5, 0.5, 0.5);
