@@ -35,19 +35,14 @@
             const canvas3d = document.getElementById('canvas3d');
             const scene = new THREE.Scene();
             const camera = new THREE.OrthographicCamera(
-                -1, // left
-                1,  // right
-                1,  // top
-                -1, // bottom
-                0.1, // near
-                10 // far
+                -1, 1, 1, -1, 0.1, 10
             );
             const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
 
             camera.position.z = 1;
 
-            const geometry = new THREE.SphereGeometry(0.015, 32, 32); // Adjusted sphere size
+            const geometry = new THREE.SphereGeometry(0.015, 32, 32);
             const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
             const spheres = [];
             for (let i = 0; i < 21; i++) {
@@ -89,15 +84,20 @@
                 const filesetResolver = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
                 );
-                const handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
-                    baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                        delegate: "GPU"
-                    },
-                    numHands: 1,
-                    runningMode: "VIDEO"
-                });
-                return handLandmarker;
+                try{
+                    const handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
+                        baseOptions: {
+                            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                            delegate: "GPU"
+                        },
+                        numHands: 1,
+                        runningMode: "VIDEO"
+                    });
+                    return handLandmarker;
+                }catch (error){
+                    console.error("Error creating hand landmarker:", error);
+                    return null;
+                }
             }
 
             async function detectHands() {
@@ -111,7 +111,7 @@
                     const landmarks = results.landmarks[0];
 
                     landmarks.forEach((landmark, index) => {
-                        spheres[index].position.set(landmark.x * 2 - 1, -landmark.y * 2 + 1, 0); // Normalized coordinates
+                        spheres[index].position.set(landmark.x * 2 - 1, -landmark.y * 2 + 1, 0);
                     });
 
                     connections.forEach((connection, index) => {
@@ -130,7 +130,9 @@
 
             await setupCamera();
             const handLandmarker = await createHandLandmarker();
-            animate();
+            if(handLandmarker){
+                animate();
+            }
 
             window.addEventListener('resize', () => {
                 renderer.setSize(window.innerWidth, window.innerHeight);
