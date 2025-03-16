@@ -28,7 +28,7 @@
 
     <script type="module">
         import * as THREE from 'https://unpkg.com/three@0.155.0/build/three.module.js';
-        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+        import { HandLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
         async function main() {
             const videoElement = document.getElementById('video');
@@ -40,7 +40,7 @@
 
             camera.position.z = 5;
 
-            const geometry = new THREE.SphereGeometry(0.1, 32, 32);
+            const geometry = new THREE.SphereGeometry(0.03, 32, 32); // Smaller spheres
             const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
             const spheres = [];
             for (let i = 0; i < 21; i++) {
@@ -48,6 +48,24 @@
                 scene.add(sphere);
                 spheres.push(sphere);
             }
+
+            //Line material
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+            const lines = [];
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8], // Index finger
+                [0, 9], [9, 10], [10, 11], [11, 12], // Middle finger
+                [0, 13], [13, 14], [14, 15], [15, 16], // Ring finger
+                [0, 17], [17, 18], [18, 19], [19, 20]  // Pinky finger
+            ];
+
+            connections.forEach(connection => {
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]);
+                const line = new THREE.Line(lineGeometry, lineMaterial);
+                scene.add(line);
+                lines.push(line);
+            });
 
             async function setupCamera() {
                 try {
@@ -92,6 +110,12 @@
                         const z = landmark.z * 5; // Adjust z depth
                         spheres[index].position.set(x / 100, y / 100, z);
                     });
+
+                    connections.forEach((connection, index) => {
+                        const start = spheres[connection[0]].position;
+                        const end = spheres[connection[1]].position;
+                        lines[index].geometry.setFromPoints([start, end]);
+                    });
                 }
             }
 
@@ -115,4 +139,4 @@
         main();
     </script>
 </body>
-  </html>
+</html>
