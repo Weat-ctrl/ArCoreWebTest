@@ -1,145 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hand Tracking with Three.js and MediaPipe</title>
+    <title>Load GLTF Scene</title>
     <style>
         body { margin: 0; overflow: hidden; }
-        #video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            z-index: -1;
-        }
-        #canvas3d {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
+        canvas { display: block; }
     </style>
 </head>
 <body>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas3d"></canvas>
-
     <script type="module">
         import * as THREE from 'https://unpkg.com/three@0.155.0/build/three.module.js';
-        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+        import { GLTFLoader } from 'https://unpkg.com/three@0.155.0/examples/jsm/loaders/GLTFLoader.js';
 
-        async function main() {
-            const videoElement = document.getElementById('video');
-            const canvas3d = document.getElementById('canvas3d');
-            const scene = new THREE.Scene();
-            const camera = new THREE.OrthographicCamera(
-                -1, 1, 1, -1, 0.1, 10
-            );
-            const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-            camera.position.z = 1;
+        camera.position.z = 5;
 
-            const geometry = new THREE.SphereGeometry(0.015, 32, 32);
-            const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            const spheres = [];
-            for (let i = 0; i < 21; i++) {
-                const sphere = new THREE.Mesh(geometry, material);
-                scene.add(sphere);
-                spheres.push(sphere);
-            }
+        // Load GLTF model
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/so_small/scene.gltf', (gltf) => { // Replace with your GLTF file path
+            scene.add(gltf.scene); // Add the loaded scene to your Three.js scene
+        }, undefined, (error) => {
+            console.error('An error happened loading the GLTF file:', error);
+        });
 
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
-            const lines = [];
-            const connections = [
-                [0, 1], [1, 2], [2, 3], [3, 4],
-                [0, 5], [5, 6], [6, 7], [7, 8],
-                [0, 9], [9, 10], [10, 11], [11, 12],
-                [0, 13], [13, 14], [14, 15], [15, 16],
-                [0, 17], [17, 18], [18, 19], [19, 20]
-            ];
-
-            connections.forEach(connection => {
-                const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]);
-                const line = new THREE.Line(lineGeometry, lineMaterial);
-                scene.add(line);
-                lines.push(line);
-            });
-
-            async function setupCamera() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                    videoElement.srcObject = stream;
-                    videoElement.addEventListener('loadedmetadata', () => {
-                        videoElement.play();
-                    });
-                } catch (error) {
-                    console.error('Error accessing camera:', error);
-                }
-            }
-
-            async function createHandLandmarker() {
-                const filesetResolver = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-                );
-                try{
-                    const handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
-                        baseOptions: {
-                            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                            delegate: "GPU"
-                        },
-                        numHands: 1,
-                        runningMode: "VIDEO"
-                    });
-                    return handLandmarker;
-                }catch (error){
-                    console.error("Error creating hand landmarker:", error);
-                    return null;
-                }
-            }
-
-            async function detectHands() {
-                if (!handLandmarker || !videoElement.videoWidth) {
-                    return;
-                }
-                let startTimeMs = performance.now();
-                const results = handLandmarker.detectForVideo(videoElement, startTimeMs);
-
-                if (results.landmarks && results.landmarks[0]) {
-                    const landmarks = results.landmarks[0];
-
-                    landmarks.forEach((landmark, index) => {
-                        spheres[index].position.set(landmark.x * 2 - 1, -landmark.y * 2 + 1, 0);
-                    });
-
-                    connections.forEach((connection, index) => {
-                        const start = spheres[connection[0]].position;
-                        const end = spheres[connection[1]].position;
-                        lines[index].geometry.setFromPoints([start, end]);
-                    });
-                }
-            }
-
-            function animate() {
-                requestAnimationFrame(animate);
-                detectHands();
-                renderer.render(scene, camera);
-            }
-
-            await setupCamera();
-            const handLandmarker = await createHandLandmarker();
-            if(handLandmarker){
-                animate();
-            }
-
-            window.addEventListener('resize', () => {
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
         }
 
-        main();
+        animate();
+
+        // Resize handling
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
     </script>
 </body>
 </html>
