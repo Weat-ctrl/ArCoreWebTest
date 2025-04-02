@@ -13,7 +13,7 @@ camera.position.z = 5;
 // Load GLTF model
 const gltfLoader = new GLTFLoader();
 gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/so_small/scene.gltf', (gltf) => { // Replace with your GLTF file path
-    scene.add(gltf.scene); // Add the loaded scene to your Three.js scene
+    scene.add(gltf.scene);
 }, undefined, (error) => {
     console.error('An error happened loading the GLTF file:', error);
 });
