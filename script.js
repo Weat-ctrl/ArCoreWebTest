@@ -12,14 +12,14 @@ camera.position.z = 5;
 
 // Load GLB Scene
 const gltfLoader = new GLTFLoader();
-gltfLoader.load('path/to/your/scene.glb', (gltf) => {
+gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/scenes/so_small.glb', (gltf) => {
     scene.add(gltf.scene);
 }, undefined, (error) => {
     console.error('Error loading GLB scene:', error);
 });
 
 // Load GLB Skybox
-gltfLoader.load('path/to/your/skybox.glb', (gltf) => {
+gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skybox.glb', (gltf) => {
     const skybox = gltf.scene.children[0]; // Assuming the box is the first child
     const skyboxScale = 1000; // Adjust the scale as needed to surround your scene
     skybox.scale.set(skyboxScale, skyboxScale, skyboxScale);
