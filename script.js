@@ -37,21 +37,6 @@ gltfLoader.load(
     }
 );
 
-// Load GLB Skybox
-gltfLoader.load(
-    'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skybox.glb',
-    (gltf) => {
-        const skybox = gltf.scene.children[0]; // Assuming the box is the first child
-        const skyboxScale = 1000;
-        skybox.scale.set(skyboxScale, skyboxScale, skyboxScale);
-        scene.add(skybox);
-    },
-    undefined,
-    (error) => {
-        console.error('Error loading GLB skybox:', error);
-    }
-);
-
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
