@@ -1,3 +1,4 @@
+/* style.css */
 body {
     margin: 0;
     overflow: hidden;
@@ -10,10 +11,9 @@ body {
     height: 100%;
 }
 
-/* Virtual joysticks */
-#joystick-left, #joystick-right {
+#joystick-move, #joystick-look {
     position: absolute;
-    bottom: 50px;
+    bottom: 30px;
     width: 100px;
     height: 100px;
     background-color: rgba(255, 255, 255, 0.2);
@@ -22,10 +22,10 @@ body {
     z-index: 10;
 }
 
-#joystick-left {
-    left: 30px;
+#joystick-move {
+    left: 20px;
 }
 
-#joystick-right {
-    right: 30px;
-    }
+#joystick-look {
+    right: 20px;
+}
