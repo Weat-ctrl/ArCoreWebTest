@@ -58,7 +58,7 @@ try {
     // =============== TERRAIN LOADING ===============
     const loader = new THREE.GLTFLoader();
     loader.load(
-        'assets/terrain.glb',
+        'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
         (gltf) => {
             try {
                 terrain = gltf.scene;
