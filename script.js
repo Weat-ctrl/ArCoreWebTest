@@ -1,175 +1,107 @@
-// =============== INITIALIZATION ===============
-console.log('[INIT] Starting Three.js scene');
+// script.js
+let camera, scene, renderer, player;
+let moveTouch = { x: 0, y: 0 };
+let lookTouch = { x: 0, y: 0 };
+const MOVE_SPEED = 0.1;
+const LOOK_SENSITIVITY = 0.02;
 
-// Scene
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x88ccff);
-scene.fog = new THREE.Fog(0x88ccff, 10, 50);
+function init() {
+    // 1. Scene setup
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x88ccff);
 
-// Renderer (WebGL with mobile optimizations)
-const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: "high-performance"
-});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
-renderer.physicallyCorrectLights = true;
-document.getElementById('scene-container').appendChild(renderer.domElement);
+    // 2. Camera setup
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 0);
 
-// Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 1.6, 0);
+    // 3. Renderer with mobile optimizations
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1 : window.devicePixelRatio);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// =============== OPTIMIZED LIGHTING ===============
-function setupLights() {
-    // 1. Ambient Light (base illumination)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
+    // 4. Player (invisible collision capsule)
+    player = new THREE.Group();
+    const geometry = new THREE.CapsuleGeometry(0.3, 1.6, 4, 8);
+    const material = new THREE.MeshBasicMaterial({ 
+        color: 0x0000ff,
+        visible: false // Hide collision mesh
+    });
+    player.add(new THREE.Mesh(geometry, material));
+    scene.add(player);
 
-    // 2. Directional Light (main shadow-casting light)
-    const sunLight = new THREE.DirectionalLight(0xfff4e6, 0.8);
-    sunLight.position.set(5, 10, 7);
-    sunLight.castShadow = true;
-    
-    // Optimized shadow settings for mobile
-    sunLight.shadow.mapSize.width = 1024;  // Lower resolution for performance
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 30;
-    sunLight.shadow.camera.left = -10;
-    sunLight.shadow.camera.right = 10;
-    sunLight.shadow.camera.top = 10;
-    sunLight.shadow.camera.bottom = -10;
-    sunLight.shadow.bias = -0.001; // Reduce shadow artifacts
-    
-    scene.add(sunLight);
+    // 5. Attach camera to player
+    player.add(camera);
 
-    // 3. Fill Light (reduces harsh shadows)
-    const fillLight = new THREE.DirectionalLight(0xccffff, 0.3);
-    fillLight.position.set(-5, 5, 5);
-    scene.add(fillLight);
+    // 6. Lighting setup
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+    directional.position.set(5, 10, 5);
+    scene.add(ambient, directional);
 
-    // 4. Player-attached light (ensures visibility)
-    const playerLight = new THREE.SpotLight(0xffffff, 0.4, 15, Math.PI/3, 0.5);
-    playerLight.position.set(0, 2, 0);
-    playerLight.castShadow = false;
-    player.add(playerLight);
-}
-setupLights();
-
-// =============== PLAYER SETUP ===============
-const player = new THREE.Group();
-const capsuleGeometry = new THREE.CapsuleGeometry(0.3, 1.2, 4, 8);
-const capsuleMaterial = new THREE.MeshStandardMaterial({
-    color: 0x00aaff,
-    roughness: 0.3,
-    metalness: 0.1
-});
-const capsule = new THREE.Mesh(capsuleGeometry, capsuleMaterial);
-capsule.castShadow = true;
-player.add(capsule);
-scene.add(player);
-
-// Camera setup
-const cameraPivot = new THREE.Group();
-cameraPivot.position.set(0, 0.6, 0);
-player.add(cameraPivot);
-cameraPivot.add(camera);
-
-// =============== TERRAIN LOADING ===============
-let terrain, groundMesh;
-const loader = new THREE.GLTFLoader();
-
-loader.load(
-    'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-    (gltf) => {
-        terrain = gltf.scene;
-        
-        // Configure shadows for all meshes
-        terrain.traverse((node) => {
-            if (node.isMesh) {
-                node.receiveShadow = true;
-                
-                // Identify ground mesh by name
-                if (node.name.includes('object_18')) {
-                    groundMesh = node;
-                    node.material.roughness = 0.8; // Make ground less shiny
-                } else {
-                    node.castShadow = true;
+    // 7. Load GLB terrain
+    new THREE.GLTFLoader().load(
+        'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
+        gltf => {
+            gltf.scene.traverse(child => {
+                if (child.isMesh) {
+                    child.material = new THREE.MeshStandardMaterial({
+                        color: child.material.color,
+                        roughness: 0.8
+                    });
+                    child.receiveShadow = true;
                 }
-            }
-        });
-        
-        scene.add(terrain);
-        console.log('[LOAD] Terrain loaded with shadow support');
-    },
-    undefined,
-    (error) => {
-        console.error('[ERROR] Terrain loading failed:', error);
-        createFallbackGround();
-    }
-);
-
-function createFallbackGround() {
-    const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(100, 100),
-        new THREE.MeshStandardMaterial({ 
-            color: 0x228822,
-            roughness: 0.9
-        })
+            });
+            scene.add(gltf.scene);
+        },
+        undefined,
+        err => console.error('Terrain load failed:', err)
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+
+    // 8. Touch controls
+    setupTouchControls();
+    animate();
 }
 
-// =============== TOUCH CONTROLS ===============
-function initControls() {
-    // Movement Joystick
-    new VirtualJoystick({
-        container: document.getElementById('joystick-move'),
-        onMove: (x, y) => {
-            const angle = Math.atan2(x, y) + player.rotation.y;
-            const speed = 0.1;
-            player.position.x += Math.sin(angle) * speed;
-            player.position.z += Math.cos(angle) * speed;
-        }
-    });
+function setupTouchControls() {
+    const moveZone = document.getElementById('move-zone');
+    const lookZone = document.getElementById('look-zone');
+    
+    // Common handler
+    const handleTouch = (zone, store) => e => {
+        const rect = zone.getBoundingClientRect();
+        const touch = e.touches[0];
+        store.x = (touch.clientX - rect.left) / rect.width * 2 - 1;
+        store.y = (touch.clientY - rect.top) / rect.height * 2 - 1;
+    };
 
-    // Look Joystick
-    new VirtualJoystick({
-        container: document.getElementById('joystick-look'),
-        onMove: (x, y) => {
-            player.rotation.y -= x * 0.02;
-            cameraPivot.rotation.x = THREE.MathUtils.clamp(
-                cameraPivot.rotation.x - y * 0.02,
-                -Math.PI/3,
-                Math.PI/3
-            );
-        }
-    });
+    // Movement zone
+    moveZone.addEventListener('touchmove', handleTouch(moveZone, moveTouch));
+    moveZone.addEventListener('touchend', () => moveTouch.x = moveTouch.y = 0);
+
+    // Look zone
+    lookZone.addEventListener('touchmove', handleTouch(lookZone, lookTouch));
+    lookZone.addEventListener('touchend', () => lookTouch.x = lookTouch.y = 0);
 }
 
-// =============== ANIMATION LOOP ===============
 function animate() {
     requestAnimationFrame(animate);
-    
-    // Update any dynamic lights here if needed
-    if (player.children[2]) { // Player light
-        player.children[2].position.copy(camera.position);
-    }
-    
+
+    // Update movement
+    player.position.x += moveTouch.x * MOVE_SPEED;
+    player.position.z += moveTouch.y * MOVE_SPEED;
+
+    // Update rotation
+    player.rotation.y -= lookTouch.x * LOOK_SENSITIVITY;
+    camera.rotation.x = THREE.MathUtils.clamp(
+        camera.rotation.x - lookTouch.y * LOOK_SENSITIVITY,
+        -Math.PI/3,
+        Math.PI/3
+    );
+
     renderer.render(scene, camera);
 }
-animate();
 
-// =============== WINDOW RESIZE ===============
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// Start controls after slight delay (ensure DOM is ready)
-setTimeout(initControls, 500);
+// Start after ensuring DOM is ready
+if (document.readyState === 'complete') init();
+else window.addEventListener('load', init);
