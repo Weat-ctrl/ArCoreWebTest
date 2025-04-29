@@ -1,34 +1,31 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile Terrain Explorer</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Mobile 3D Viewer</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        .touch-zone {
+            position: fixed;
+            bottom: 20px;
+            width: 40vw;
+            height: 40vh;
+            opacity: 0.3;
+            z-index: 100;
+        }
+        #move-zone { left: 0; background: #00f; }
+        #look-zone { right: 0; background: #f00; }
+    </style>
 </head>
 <body>
-    <div id="scene-container"></div>
-    <div id="joystick-move"></div>
-    <div id="joystick-look"></div>
-    
-    <!-- Add Three.js from CDN with fallback -->
+    <div id="canvas-container"></div>
+    <div class="touch-zone" id="move-zone"></div>
+    <div class="touch-zone" id="look-zone"></div>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
-    
-    <script src="VirtualJoystick.js"></script>
     <script src="script.js"></script>
-    
-    <!-- Error checking script -->
-    <script>
-        window.addEventListener('error', function(e) {
-            console.error('Global error:', e.message, 'in', e.filename, 'line', e.lineno);
-        });
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM fully loaded');
-            if (!THREE) console.error('Three.js not loaded');
-            if (!document.getElementById('scene-container')) console.error('Scene container missing');
-        });
-    </script>
 </body>
-    </html>
+                                </html>
