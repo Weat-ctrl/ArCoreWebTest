@@ -1,31 +1,346 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile 3D Viewer</title>
+    <title>Terrain Landing Demo</title>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; }
-        .touch-zone {
-            position: fixed;
-            bottom: 20px;
-            width: 40vw;
-            height: 40vh;
-            opacity: 0.3;
+        .joystick {
+            position: absolute;
+            bottom: 30px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
             z-index: 100;
         }
-        #move-zone { left: 0; background: #00f; }
-        #look-zone { right: 0; background: #f00; }
+        #move-joystick { left: 30px; }
+        #look-joystick { right: 30px; }
+        #debug-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
     <div id="canvas-container"></div>
-    <div class="touch-zone" id="move-zone"></div>
-    <div class="touch-zone" id="look-zone"></div>
+    <div id="move-joystick" class="joystick"></div>
+    <div id="look-joystick" class="joystick"></div>
+    <div id="debug-info">Loading...</div>
+    
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/math/Raycaster.js"></script>
+    <script>
+        // ============== MAIN CONFIG ==============
+        const CONFIG = {
+            player: {
+                height: 1.8,
+                radius: 0.3,
+                fallSpeed: 0.05,
+                moveSpeed: 0.1,
+                lookSpeed: 0.002
+            },
+            spawn: {
+                altitude: 50,
+                safeDistance: 5
+            }
+        };
+
+        // ============== GLOBAL VARIABLES ==============
+        let scene, camera, renderer, player, terrain;
+        let moveJoystick = { x: 0, y: 0 };
+        let lookJoystick = { x: 0, y: 0 };
+        let isGrounded = false;
+        let velocity = new THREE.Vector3();
+        let debugInfo;
+
+        // ============== INITIALIZATION ==============
+        function init() {
+            // 1. Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x88ccff);
+            scene.fog = new THREE.Fog(0x88ccff, 10, 100);
+
+            // 2. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // 3. Debug info
+            debugInfo = document.getElementById('debug-info');
+
+            // 4. Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(1, 1, 1);
+            scene.add(ambient, sun);
+
+            // 5. Load terrain
+            loadTerrain();
+            
+            // 6. Setup controls
+            setupControls();
+            
+            // 7. Start animation
+            animate();
+        }
+
+        // ============== TERRAIN LOADING ==============
+        function loadTerrain() {
+            new THREE.GLTFLoader().load(
+                'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
+                gltf => {
+                    terrain = gltf.scene;
+                    
+                    // Configure terrain shadows
+                    terrain.traverse(child => {
+                        if (child.isMesh) {
+                            child.receiveShadow = true;
+                            child.castShadow = true;
+                        }
+                    });
+                    
+                    scene.add(terrain);
+                    debugInfo.textContent = "Terrain loaded";
+                    
+                    // Spawn player after terrain is ready
+                    spawnPlayer();
+                },
+                undefined,
+                err => {
+                    console.error(err);
+                    debugInfo.textContent = "Failed to load terrain";
+                    createFallbackTerrain();
+                    spawnPlayer();
+                }
+            );
+        }
+
+        function createFallbackTerrain() {
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100, 10, 10),
+                new THREE.MeshStandardMaterial({ color: 0x228822 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            terrain = ground;
+        }
+
+        // ============== PLAYER SYSTEM ==============
+        function spawnPlayer() {
+            // 1. Create player group
+            player = new THREE.Group();
+            
+            // 2. Visual representation (capsule)
+            const capsule = new THREE.Mesh(
+                new THREE.CapsuleGeometry(CONFIG.player.radius, CONFIG.player.height - CONFIG.player.radius * 2, 4, 8),
+                new THREE.MeshPhongMaterial({ color: 0x00aaff, transparent: true, opacity: 0.8 })
+            );
+            capsule.castShadow = true;
+            player.add(capsule);
+            
+            // 3. Find spawn position
+            const spawnPos = findSpawnPosition();
+            player.position.copy(spawnPos);
+            
+            // 4. Add camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/innerHeight, 0.1, 1000);
+            camera.position.set(0, CONFIG.player.height * 0.9, 0);
+            player.add(camera);
+            
+            scene.add(player);
+            debugInfo.textContent = `Player spawned at ${spawnPos.x.toFixed(1)}, ${spawnPos.y.toFixed(1)}, ${spawnPos.z.toFixed(1)}`;
+        }
+
+        function findSpawnPosition() {
+            // Default to center + altitude
+            const position = new THREE.Vector3(0, CONFIG.spawn.altitude, 0);
+            
+            // If terrain exists, find highest point below spawn
+            if (terrain) {
+                const raycaster = new THREE.Raycaster(
+                    position.clone().setY(1000),
+                    new THREE.Vector3(0, -1, 0)
+                );
+                
+                const intersects = raycaster.intersectObject(terrain, true);
+                if (intersects.length > 0) {
+                    position.copy(intersects[0].point);
+                    position.y += CONFIG.spawn.altitude;
+                }
+            }
+            
+            return position;
+        }
+
+        // ============== PHYSICS & COLLISION ==============
+        function updatePlayer(delta) {
+            // 1. Apply gravity if not grounded
+            if (!isGrounded) {
+                velocity.y -= CONFIG.player.fallSpeed * delta * 60;
+            } else {
+                velocity.y = Math.max(0, velocity.y);
+            }
+            
+            // 2. Apply movement from joystick
+            const moveVector = new THREE.Vector3(
+                moveJoystick.x * CONFIG.player.moveSpeed * delta * 60,
+                0,
+                -moveJoystick.y * CONFIG.player.moveSpeed * delta * 60
+            );
+            
+            // Rotate movement to match camera
+            moveVector.applyQuaternion(player.quaternion);
+            velocity.x = moveVector.x;
+            velocity.z = moveVector.z;
+            
+            // 3. Apply velocity
+            player.position.add(velocity.clone().multiplyScalar(delta * 60));
+            
+            // 4. Check collisions
+            checkCollisions();
+        }
+
+        function checkCollisions() {
+            // 1. Ground check
+            const raycaster = new THREE.Raycaster(
+                player.position.clone().setY(player.position.y + CONFIG.player.radius),
+                new THREE.Vector3(0, -1, 0),
+                0,
+                CONFIG.player.height * 0.6
+            );
+            
+            const intersects = raycaster.intersectObject(terrain, true);
+            isGrounded = intersects.length > 0;
+            
+            // 2. Snap to ground if grounded
+            if (isGrounded) {
+                player.position.y = intersects[0].point.y + CONFIG.player.height * 0.5;
+                velocity.y = 0;
+            }
+            
+            // 3. Simple wall collision (prevents going through terrain)
+            const playerBoundingSphere = new THREE.Sphere(
+                player.position,
+                CONFIG.player.radius
+            );
+            
+            const terrainBox = new THREE.Box3().setFromObject(terrain);
+            if (!terrainBox.containsPoint(player.position)) {
+                player.position.sub(velocity.clone().multiplyScalar(1.5));
+            }
+        }
+
+        // ============== CONTROLS ==============
+        function setupControls() {
+            const moveZone = document.getElementById('move-joystick');
+            const lookZone = document.getElementById('look-joystick');
+            
+            // Movement joystick
+            moveZone.addEventListener('touchstart', handleTouchStart(moveJoystick));
+            moveZone.addEventListener('touchmove', handleTouchMove(moveJoystick, moveZone));
+            moveZone.addEventListener('touchend', handleTouchEnd(moveJoystick));
+            
+            // Look joystick
+            lookZone.addEventListener('touchstart', handleTouchStart(lookJoystick));
+            lookZone.addEventListener('touchmove', handleTouchMove(lookJoystick, lookZone));
+            lookZone.addEventListener('touchend', handleTouchEnd(lookJoystick));
+            
+            // Window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function handleTouchStart(joystick) {
+            return (e) => {
+                joystick.active = true;
+                e.preventDefault();
+            };
+        }
+
+        function handleTouchMove(joystick, element) {
+            return (e) => {
+                if (!joystick.active) return;
+                
+                const rect = element.getBoundingClientRect();
+                const touch = e.touches[0];
+                
+                // Get touch position relative to joystick center
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                joystick.x = (touch.clientX - centerX) / (rect.width / 2);
+                joystick.y = (touch.clientY - centerY) / (rect.height / 2);
+                
+                // Clamp to joystick bounds
+                const length = Math.sqrt(joystick.x * joystick.x + joystick.y * joystick.y);
+                if (length > 1) {
+                    joystick.x /= length;
+                    joystick.y /= length;
+                }
+                
+                e.preventDefault();
+            };
+        }
+
+        function handleTouchEnd(joystick) {
+            return () => {
+                joystick.active = false;
+                joystick.x = 0;
+                joystick.y = 0;
+            };
+        }
+
+        // ============== ANIMATION LOOP ==============
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            // Calculate delta time (in seconds)
+            const delta = Math.min(0.1, (time - lastTime) / 1000);
+            lastTime = time;
+            
+            // Update systems
+            updatePlayer(delta);
+            updateCameraRotation();
+            
+            // Update debug info
+            debugInfo.textContent = `Position: ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)}\n` +
+                                  `Grounded: ${isGrounded}\n` +
+                                  `Velocity: ${velocity.y.toFixed(2)}`;
+            
+            renderer.render(scene, camera);
+        }
+
+        function updateCameraRotation() {
+            // Horizontal rotation (around Y axis)
+            player.rotation.y -= lookJoystick.x * CONFIG.player.lookSpeed;
+            
+            // Vertical rotation (clamped)
+            camera.rotation.x = THREE.MathUtils.clamp(
+                camera.rotation.x - lookJoystick.y * CONFIG.player.lookSpeed,
+                -Math.PI/3,
+                Math.PI/3
+            );
+        }
+
+        // Start the app
+        init();
+    </script>
 </body>
-                                </html>
+    </html>
