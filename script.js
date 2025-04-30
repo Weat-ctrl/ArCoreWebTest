@@ -1,107 +1,100 @@
-// script.js
-let camera, scene, renderer, player;
+// Configuration
+const CONFIG = {
+    playerHeight: 1.8, // Human eye level in meters
+    terrainSearchHeight: 100, // How far up to look for terrain
+    safeSpawnDistance: 5 // Spawn distance from terrain center
+};
+
+let camera, scene, renderer, player, terrain;
 let moveTouch = { x: 0, y: 0 };
 let lookTouch = { x: 0, y: 0 };
-const MOVE_SPEED = 0.1;
-const LOOK_SENSITIVITY = 0.02;
 
 function init() {
-    // 1. Scene setup
+    // 1. Basic Three.js setup
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x88ccff);
-
-    // 2. Camera setup
     camera = new THREE.PerspectiveCamera(75, window.innerWidth/innerHeight, 0.1, 1000);
-    camera.position.set(0, 1.6, 0);
-
-    // 3. Renderer with mobile optimizations
+    
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1 : window.devicePixelRatio);
-    document.getElementById('canvas-container').appendChild(renderer.domElement);
+    document.body.appendChild(renderer.domElement);
 
-    // 4. Player (invisible collision capsule)
-    player = new THREE.Group();
-    const geometry = new THREE.CapsuleGeometry(0.3, 1.6, 4, 8);
-    const material = new THREE.MeshBasicMaterial({ 
-        color: 0x0000ff,
-        visible: false // Hide collision mesh
-    });
-    player.add(new THREE.Mesh(geometry, material));
-    scene.add(player);
+    // 2. Temporary visual reference (debug)
+    const grid = new THREE.GridHelper(100, 100);
+    scene.add(grid);
 
-    // 5. Attach camera to player
-    player.add(camera);
-
-    // 6. Lighting setup
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.6);
-    directional.position.set(5, 10, 5);
-    scene.add(ambient, directional);
-
-    // 7. Load GLB terrain
+    // 3. Load terrain with automatic scaling
     new THREE.GLTFLoader().load(
         'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
         gltf => {
-            gltf.scene.traverse(child => {
-                if (child.isMesh) {
-                    child.material = new THREE.MeshStandardMaterial({
-                        color: child.material.color,
-                        roughness: 0.8
-                    });
-                    child.receiveShadow = true;
-                }
-            });
-            scene.add(gltf.scene);
+            terrain = gltf.scene;
+            
+            // Calculate terrain bounds
+            const bbox = new THREE.Box3().setFromObject(terrain);
+            const center = bbox.getCenter(new THREE.Vector3());
+            const size = bbox.getSize(new THREE.Vector3());
+            
+            console.log(`Terrain dimensions: ${size.x.toFixed(1)}x${size.y.toFixed(1)}x${size.z.toFixed(1)}`);
+
+            // Position terrain at ground level
+            terrain.position.y -= bbox.min.y;
+            scene.add(terrain);
+
+            // 4. Position player at highest point + safe distance
+            findSpawnPosition(center, size);
         },
         undefined,
         err => console.error('Terrain load failed:', err)
     );
 
-    // 8. Touch controls
+    // 5. Lighting
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(0.5, 1, 0.5);
+    scene.add(light, new THREE.AmbientLight(0x404040));
+
+    // 6. Controls
     setupTouchControls();
     animate();
 }
 
-function setupTouchControls() {
-    const moveZone = document.getElementById('move-zone');
-    const lookZone = document.getElementById('look-zone');
+function findSpawnPosition(center, size) {
+    // Create player after terrain is loaded
+    player = new THREE.Group();
     
-    // Common handler
-    const handleTouch = (zone, store) => e => {
-        const rect = zone.getBoundingClientRect();
-        const touch = e.touches[0];
-        store.x = (touch.clientX - rect.left) / rect.width * 2 - 1;
-        store.y = (touch.clientY - rect.top) / rect.height * 2 - 1;
-    };
-
-    // Movement zone
-    moveZone.addEventListener('touchmove', handleTouch(moveZone, moveTouch));
-    moveZone.addEventListener('touchend', () => moveTouch.x = moveTouch.y = 0);
-
-    // Look zone
-    lookZone.addEventListener('touchmove', handleTouch(lookZone, lookTouch));
-    lookZone.addEventListener('touchend', () => lookTouch.x = lookTouch.y = 0);
-}
-
-function animate() {
-    requestAnimationFrame(animate);
-
-    // Update movement
-    player.position.x += moveTouch.x * MOVE_SPEED;
-    player.position.z += moveTouch.y * MOVE_SPEED;
-
-    // Update rotation
-    player.rotation.y -= lookTouch.x * LOOK_SENSITIVITY;
-    camera.rotation.x = THREE.MathUtils.clamp(
-        camera.rotation.x - lookTouch.y * LOOK_SENSITIVITY,
-        -Math.PI/3,
-        Math.PI/3
+    // 1. Find highest point near terrain center
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = CONFIG.terrainSearchHeight;
+    
+    const startPoint = new THREE.Vector3(
+        center.x,
+        center.y + size.y,
+        center.z
     );
-
-    renderer.render(scene, camera);
+    
+    raycaster.set(startPoint, new THREE.Vector3(0, -1, 0));
+    const intersects = raycaster.intersectObject(terrain, true);
+    
+    if (intersects.length > 0) {
+        const groundPoint = intersects[0].point;
+        
+        // 2. Position player above ground
+        player.position.set(
+            groundPoint.x + CONFIG.safeSpawnDistance,
+            groundPoint.y + CONFIG.playerHeight,
+            groundPoint.z + CONFIG.safeSpawnDistance
+        );
+        
+        console.log(`Player spawned at: ${player.position.toArray().map(v => v.toFixed(1))}`);
+    } else {
+        // Fallback position
+        player.position.set(0, CONFIG.playerHeight, 5);
+        console.warn('Using fallback spawn position');
+    }
+    
+    // 3. Add camera to player
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 0);
+    player.add(camera);
+    scene.add(player);
 }
 
-// Start after ensuring DOM is ready
-if (document.readyState === 'complete') init();
-else window.addEventListener('load', init);
+// ... (keep existing touch controls and animate functions from previous example)
