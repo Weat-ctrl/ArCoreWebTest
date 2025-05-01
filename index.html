@@ -9,7 +9,12 @@
 <body>
     <div id="canvas-container"></div>
     
-    <!-- Change script tag to type="module" -->
-    <script type="module" src="script.js"></script>
+    <!-- Load Three.js and its components first -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- Then your script -->
+    <script src="script.js"></script>
 </body>
 </html>
