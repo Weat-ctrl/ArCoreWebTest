@@ -1,23 +1,30 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/loaders/GLTFLoader.js';
-
 // Scene setup
+const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x88ccff);
+scene.background = new THREE.Color(0xdddddd);
 
-// Camera (overhead view)
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 50, 50); // High overhead position
+// Camera
+const camera = new THREE.PerspectiveCamera(
+    75, 
+    window.innerWidth / window.innerHeight, 
+    0.1, 
+    1000
+);
+camera.position.set(5, 5, 5);
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-document.getElementById('canvas-container').appendChild(renderer.domElement);
+container.appendChild(renderer.domElement);
+
+// OrbitControls
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -25,55 +32,49 @@ directionalLight.position.set(5, 10, 7);
 directionalLight.castShadow = true;
 scene.add(directionalLight);
 
-// OrbitControls
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.screenSpacePanning = false;
-controls.maxPolarAngle = Math.PI * 0.9; // Prevent going under terrain
-controls.minDistance = 5;
-controls.maxDistance = 100;
-
-// Grid helper
-const gridHelper = new THREE.GridHelper(100, 100);
-scene.add(gridHelper);
-
-// Load terrain
-const loader = new GLTFLoader();
-let terrain;
+// GLB Loader
+const loader = new THREE.GLTFLoader();
+let model;
 
 loader.load(
+    // URL of your GLB file - replace with your model path
     'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-    (gltf) => {
-        terrain = gltf.scene;
+    
+    // onLoad callback
+    function (gltf) {
+        model = gltf.scene;
+        scene.add(model);
         
-        // Configure terrain shadows
-        terrain.traverse((node) => {
+        // Adjust model position/scale if needed
+        model.position.set(0, 0, 0);
+        model.scale.set(1, 1, 1);
+        
+        // Optional: traverse the model to enable shadows
+        model.traverse(function(node) {
             if (node.isMesh) {
-                node.receiveShadow = true;
                 node.castShadow = true;
+                node.receiveShadow = true;
             }
         });
-        
-        // Center terrain at origin
-        const bbox = new THREE.Box3().setFromObject(terrain);
-        const center = bbox.getCenter(new THREE.Vector3());
-        terrain.position.sub(center);
-        
-        scene.add(terrain);
-        
-        // Auto-zoom to fit terrain
-        const size = bbox.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        camera.position.set(0, maxDim * 1.5, maxDim * 1.5);
-        controls.target.copy(new THREE.Vector3(0, size.y / 2, 0));
-        controls.update();
     },
-    undefined,
-    (error) => {
-        console.error('Error loading terrain:', error);
+    
+    // onProgress callback
+    function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    
+    // onError callback
+    function (error) {
+        console.error('Error loading GLB model:', error);
     }
 );
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -82,11 +83,5 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    controls.update(); // Required for damping
-    renderer.render(scene, camera);
-}
-
+// Start animation
 animate();
