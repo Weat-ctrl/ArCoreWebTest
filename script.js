@@ -1,87 +1,142 @@
 // Scene setup
-const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
-// Camera
+// First-person camera (this is the player's viewpoint)
 const camera = new THREE.PerspectiveCamera(
     75, 
     window.innerWidth / window.innerHeight, 
     0.1, 
     1000
 );
-camera.position.set(13, 48, 63);
+camera.position.set(13, 48, 63); // Start position (adjust based on your GLB floor)
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-container.appendChild(renderer.domElement);
+document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// OrbitControls
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
+// Physics & Movement
+const gravity = -9.8; // Gravity strength
+let velocityY = 0;
+let isOnGround = false;
+const moveSpeed = 0.2; // Slower for touch controls
+let moveDirection = new THREE.Vector3();
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight);
+// Collision detection
+let worldBounds = new THREE.Box3(); // Will be set after GLB loads
+const playerHeight = 1.8; // Approx. human height
+const playerRadius = 0.5; // Collision radius
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(5, 10, 7);
-directionalLight.castShadow = true;
-scene.add(directionalLight);
+// Touch controls
+const touchJoystick = {
+    active: false,
+    startX: 0,
+    startY: 0,
+    moveX: 0,
+    moveY: 0
+};
 
-// GLB Loader
+// Load GLB model (with floor detection)
+let floorY = 0; // Will be set when GLB loads
 const loader = new THREE.GLTFLoader();
-let model;
-
 loader.load(
-    // URL of your GLB file - replace with your model path
     'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-    
-    // onLoad callback
-    function (gltf) {
-        model = gltf.scene;
+    (gltf) => {
+        const model = gltf.scene;
         scene.add(model);
-        
-        // Adjust model position/scale if needed
-        model.position.set(0, 0, 0);
-        model.scale.set(1, 1, 1);
-        
-        // Optional: traverse the model to enable shadows
-        model.traverse(function(node) {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-            }
-        });
+
+        // Set floor level (adjust if your model has a specific floor)
+        const box = new THREE.Box3().setFromObject(model);
+        floorY = box.min.y;
+        worldBounds.copy(box); // Set world bounds for collision
+
+        // Optional: Visualize floor (debug)
+        const floorHelper = new THREE.Box3Helper(worldBounds, 0x00ff00);
+        scene.add(floorHelper);
     },
-    
-    // onProgress callback
-    function (xhr) {
-        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-    },
-    
-    // onError callback
-    function (error) {
-        console.error('Error loading GLB model:', error);
-    }
+    undefined,
+    (error) => console.error('Error loading model:', error)
 );
 
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
-}
-
-// Handle window resize
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+// Touch movement controls
+document.addEventListener('touchstart', (e) => {
+    touchJoystick.active = true;
+    touchJoystick.startX = e.touches[0].clientX;
+    touchJoystick.startY = e.touches[0].clientY;
 });
 
-// Start animation
+document.addEventListener('touchmove', (e) => {
+    if (!touchJoystick.active) return;
+    touchJoystick.moveX = e.touches[0].clientX - touchJoystick.startX;
+    touchJoystick.moveY = e.touches[0].clientY - touchJoystick.startY;
+});
+
+document.addEventListener('touchend', () => {
+    touchJoystick.active = false;
+    touchJoystick.moveX = touchJoystick.moveY = 0;
+});
+
+// Gyroscope controls (optional for mobile look)
+window.addEventListener('deviceorientation', (e) => {
+    if (!e.alpha) return; // Skip if no gyro support
+    
+    // Adjust camera rotation based on device tilt
+    camera.rotation.y = -e.alpha * (Math.PI / 180); // Left/right
+    camera.rotation.x = -e.beta * (Math.PI / 180) * 0.5; // Up/down (limited)
+});
+
+// Update player movement & physics
+function updatePlayer(deltaTime) {
+    // Apply gravity
+    velocityY += gravity * deltaTime;
+    camera.position.y += velocityY * deltaTime;
+
+    // Check if player hit the floor
+    if (camera.position.y <= floorY + playerHeight) {
+        camera.position.y = floorY + playerHeight;
+        velocityY = 0;
+        isOnGround = true;
+    } else {
+        isOnGround = false;
+    }
+
+    // Movement from touch controls
+    if (touchJoystick.active) {
+        const moveX = touchJoystick.moveX * 0.01; // Sensitivity adjustment
+        const moveY = touchJoystick.moveY * 0.01;
+
+        // Calculate movement direction relative to camera
+        moveDirection.set(moveX, 0, -moveY).normalize();
+        moveDirection.applyQuaternion(camera.quaternion);
+        moveDirection.y = 0; // Keep movement horizontal
+
+        // Apply movement
+        camera.position.addScaledVector(moveDirection, moveSpeed * deltaTime);
+    }
+
+    // Simple collision (prevent walking outside bounds)
+    camera.position.x = THREE.MathUtils.clamp(
+        camera.position.x,
+        worldBounds.min.x + playerRadius,
+        worldBounds.max.x - playerRadius
+    );
+    camera.position.z = THREE.MathUtils.clamp(
+        camera.position.z,
+        worldBounds.min.z + playerRadius,
+        worldBounds.max.z - playerRadius
+    );
+}
+
+// Animation loop
+let lastTime = 0;
+function animate(time) {
+    const deltaTime = (time - lastTime) / 1000; // Convert to seconds
+    lastTime = time;
+
+    updatePlayer(deltaTime);
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+}
 animate();
