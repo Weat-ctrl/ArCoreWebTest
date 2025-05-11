@@ -2,14 +2,14 @@
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
-// First-person camera (this is the player's viewpoint)
+// First-person camera (initial position same as your working example)
 const camera = new THREE.PerspectiveCamera(
-    75, 
-    window.innerWidth / window.innerHeight, 
-    0.1, 
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
     1000
 );
-camera.position.set(13, 48, 63); // Start position (adjust based on your GLB floor)
+camera.position.set(13, 48, 63); // Matches your working position
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -18,16 +18,11 @@ renderer.shadowMap.enabled = true;
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
 // Physics & Movement
-const gravity = -9.8; // Gravity strength
+const gravity = -0.2; // Slower gravity for mobile
 let velocityY = 0;
 let isOnGround = false;
-const moveSpeed = 0.2; // Slower for touch controls
-let moveDirection = new THREE.Vector3();
-
-// Collision detection
-let worldBounds = new THREE.Box3(); // Will be set after GLB loads
-const playerHeight = 1.8; // Approx. human height
-const playerRadius = 0.5; // Collision radius
+const moveSpeed = 0.1; // Slower for touch controls
+let floorY = 0; // Will be set after GLB loads
 
 // Touch controls
 const touchJoystick = {
@@ -38,8 +33,7 @@ const touchJoystick = {
     moveY: 0
 };
 
-// Load GLB model (with floor detection)
-let floorY = 0; // Will be set when GLB loads
+// Load GLB model
 const loader = new THREE.GLTFLoader();
 loader.load(
     'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
@@ -47,20 +41,16 @@ loader.load(
         const model = gltf.scene;
         scene.add(model);
 
-        // Set floor level (adjust if your model has a specific floor)
+        // Set floor level (from your working example)
         const box = new THREE.Box3().setFromObject(model);
-        floorY = box.min.y;
-        worldBounds.copy(box); // Set world bounds for collision
-
-        // Optional: Visualize floor (debug)
-        const floorHelper = new THREE.Box3Helper(worldBounds, 0x00ff00);
-        scene.add(floorHelper);
+        floorY = box.min.y; // Camera will fall to this height
+        console.log("Floor level:", floorY); // Debug log
     },
     undefined,
-    (error) => console.error('Error loading model:', error)
+    (error) => console.error("Model load error:", error)
 );
 
-// Touch movement controls
+// Touch movement (mobile controls)
 document.addEventListener('touchstart', (e) => {
     touchJoystick.active = true;
     touchJoystick.startX = e.touches[0].clientX;
@@ -78,24 +68,15 @@ document.addEventListener('touchend', () => {
     touchJoystick.moveX = touchJoystick.moveY = 0;
 });
 
-// Gyroscope controls (optional for mobile look)
-window.addEventListener('deviceorientation', (e) => {
-    if (!e.alpha) return; // Skip if no gyro support
-    
-    // Adjust camera rotation based on device tilt
-    camera.rotation.y = -e.alpha * (Math.PI / 180); // Left/right
-    camera.rotation.x = -e.beta * (Math.PI / 180) * 0.5; // Up/down (limited)
-});
-
-// Update player movement & physics
-function updatePlayer(deltaTime) {
+// Update player position (gravity + movement)
+function updatePlayer() {
     // Apply gravity
-    velocityY += gravity * deltaTime;
-    camera.position.y += velocityY * deltaTime;
+    velocityY += gravity;
+    camera.position.y += velocityY;
 
     // Check if player hit the floor
-    if (camera.position.y <= floorY + playerHeight) {
-        camera.position.y = floorY + playerHeight;
+    if (camera.position.y <= floorY + 1.8) { // 1.8 = player height
+        camera.position.y = floorY + 1.8;
         velocityY = 0;
         isOnGround = true;
     } else {
@@ -104,39 +85,30 @@ function updatePlayer(deltaTime) {
 
     // Movement from touch controls
     if (touchJoystick.active) {
-        const moveX = touchJoystick.moveX * 0.01; // Sensitivity adjustment
+        const moveX = touchJoystick.moveX * 0.01; // Sensitivity
         const moveY = touchJoystick.moveY * 0.01;
 
-        // Calculate movement direction relative to camera
-        moveDirection.set(moveX, 0, -moveY).normalize();
-        moveDirection.applyQuaternion(camera.quaternion);
-        moveDirection.y = 0; // Keep movement horizontal
+        // Move forward/backward relative to camera
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
 
         // Apply movement
-        camera.position.addScaledVector(moveDirection, moveSpeed * deltaTime);
+        camera.position.addScaledVector(forward, moveY * moveSpeed);
+        camera.position.addScaledVector(right, moveX * moveSpeed);
     }
-
-    // Simple collision (prevent walking outside bounds)
-    camera.position.x = THREE.MathUtils.clamp(
-        camera.position.x,
-        worldBounds.min.x + playerRadius,
-        worldBounds.max.x - playerRadius
-    );
-    camera.position.z = THREE.MathUtils.clamp(
-        camera.position.z,
-        worldBounds.min.z + playerRadius,
-        worldBounds.max.z - playerRadius
-    );
 }
 
 // Animation loop
-let lastTime = 0;
-function animate(time) {
-    const deltaTime = (time - lastTime) / 1000; // Convert to seconds
-    lastTime = time;
-
-    updatePlayer(deltaTime);
-    renderer.render(scene, camera);
+function animate() {
     requestAnimationFrame(animate);
+    updatePlayer();
+    renderer.render(scene, camera);
 }
 animate();
+
+// Handle window resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
