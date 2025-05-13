@@ -17,7 +17,7 @@ fetch('scene.json')
 
 // Load GLB terrain
 const gltfLoader = new THREE.GLTFLoader();
-gltfLoader.load('terrain.glb', (gltf) => {
+gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/skycastle.glb', (gltf) => {
     scene.add(gltf.scene);
 });
 
