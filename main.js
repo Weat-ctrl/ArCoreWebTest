@@ -7,7 +7,7 @@ document.body.appendChild(renderer.domElement);
 
 // Load JSON scene
 const loader = new THREE.ObjectLoader();
-fetch('scene.json')
+fetch('https://weat-ctrl.github.io/ArCoreWebTest/scene.json')
     .then(response => response.json())
     .then(data => {
         const loadedScene = loader.parse(data);
@@ -17,7 +17,7 @@ fetch('scene.json')
 
 // Load GLB terrain
 const gltfLoader = new THREE.GLTFLoader();
-gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/skycastle.glb', (gltf) => {
+gltfLoader.load('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb', (gltf) => {
     scene.add(gltf.scene);
 });
 
