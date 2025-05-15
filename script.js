@@ -72,7 +72,7 @@ loader.load(
 // Load monk model at specific position
 loader.load(
     // Replace with your monk GLB path
-    'https://weat-ctrl.github.io/ArCoreWebTest/monk.gltf',
+    'https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf',
     function (gltf) {
         const monk = gltf.scene;
         scene.add(monk);
