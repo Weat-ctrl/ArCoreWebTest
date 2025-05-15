@@ -1,58 +1,80 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/loaders/GLTFLoader.js';
-import { ObjectLoader } from 'https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/loaders/ObjectLoader.js';
-
 // Scene setup
+const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ 
-    canvas: document.getElementById("sceneCanvas"),
-    antialias: true 
-});
+scene.background = new THREE.Color(0xdddddd);
+
+// Camera
+const camera = new THREE.PerspectiveCamera(
+    75, 
+    window.innerWidth / window.innerHeight, 
+    0.1, 
+    1000
+);
+camera.position.set(13, 48, 63);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+container.appendChild(renderer.domElement);
 
-// Load JSON scene
-const objectLoader = new ObjectLoader();
-fetch('https://weat-ctrl.github.io/ArCoreWebTest/scene.json')
-    .then(response => {
-        if (!response.ok) throw new Error('Network response was not ok');
-        return response.json();
-    })
-    .then(data => {
-        if (!data || typeof data !== 'object') {
-            throw new Error('Invalid JSON data');
-        }
-        const loadedScene = objectLoader.parse(data);
-        scene.add(loadedScene);
-    })
-    .catch(error => console.error("Error loading JSON:", error));
-
-// Load GLB terrain
-const gltfLoader = new GLTFLoader();
-gltfLoader.load(
-    'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb', 
-    (gltf) => {
-        scene.add(gltf.scene);
-    },
-    undefined,
-    (error) => console.error("Error loading GLB:", error)
-);
-
-// Create player capsule
-const capsule = new THREE.Mesh(
-    new THREE.CapsuleGeometry(1, 2),
-    new THREE.MeshStandardMaterial({ color: 0x00ff00 })
-);
-scene.add(capsule);
-camera.position.set(0, 2, 5);
-capsule.add(camera);
+// OrbitControls
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0x404040);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(1, 1, 1).normalize();
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(5, 10, 7);
+directionalLight.castShadow = true;
 scene.add(directionalLight);
+
+// GLB Loader
+const loader = new THREE.GLTFLoader();
+let model;
+
+loader.load(
+    // URL of your GLB file - replace with your model path
+    'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
+    
+    // onLoad callback
+    function (gltf) {
+        model = gltf.scene;
+        scene.add(model);
+        
+        // Adjust model position/scale if needed
+        model.position.set(0, 0, 0);
+        model.scale.set(1, 1, 1);
+        
+        // Optional: traverse the model to enable shadows
+        model.traverse(function(node) {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+    },
+    
+    // onProgress callback
+    function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    
+    // onError callback
+    function (error) {
+        console.error('Error loading GLB model:', error);
+    }
+);
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -61,9 +83,5 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    renderer.render(scene, camera);
-}
+// Start animation
 animate();
