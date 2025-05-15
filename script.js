@@ -36,20 +36,26 @@ scene.add(directionalLight);
 const loader = new THREE.GLTFLoader();
 let model;
 
+// Function to handle loading progress
+function onProgress(xhr) {
+    if (xhr.lengthComputable) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    } else {
+        // Show just the bytes loaded if total is unknown
+        console.log(xhr.loaded + ' bytes loaded');
+    }
+}
+
+// Load skycastle model
 loader.load(
-    // URL of your GLB file - replace with your model path
     'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-    
-    // onLoad callback
     function (gltf) {
         model = gltf.scene;
         scene.add(model);
         
-        // Adjust model position/scale if needed
         model.position.set(0, 0, 0);
         model.scale.set(1, 1, 1);
         
-        // Optional: traverse the model to enable shadows
         model.traverse(function(node) {
             if (node.isMesh) {
                 node.castShadow = true;
@@ -57,15 +63,36 @@ loader.load(
             }
         });
     },
-    
-    // onProgress callback
-    function (xhr) {
-        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-    },
-    
-    // onError callback
+    onProgress, // Use the progress handler we defined
     function (error) {
-        console.error('Error loading GLB model:', error);
+        console.error('Error loading skycastle GLB model:', error);
+    }
+);
+
+// Load monk model at specific position
+loader.load(
+    // Replace with your monk GLB path
+    'https://weat-ctrl.github.io/ArCoreWebTest/monk.gltf',
+    function (gltf) {
+        const monk = gltf.scene;
+        scene.add(monk);
+        
+        // Set position as requested
+        monk.position.set(6.18, 29.792, 24.658);
+        
+        // Adjust scale if needed
+        monk.scale.set(1, 1, 1);
+        
+        monk.traverse(function(node) {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+    },
+    onProgress, // Reuse the same progress handler
+    function (error) {
+        console.error('Error loading monk GLB model:', error);
     }
 );
 
