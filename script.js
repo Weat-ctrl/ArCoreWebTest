@@ -3,9 +3,9 @@ const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
-// Camera (Third-person view)
+// Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const cameraOffset = new THREE.Vector3(0, 3, -8); // Camera position relative to character
+const cameraOffset = new THREE.Vector3(0, 3, -8);
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -34,7 +34,9 @@ const rotationSpeed = 0.1;
 
 // Load Models
 const loader = new THREE.GLTFLoader();
-loader.setResponseType('arraybuffer');
+
+// Remove this line - it's not needed and causes the error
+// loader.setResponseType('arraybuffer'); 
 
 // Load Skycastle
 loader.load(
@@ -48,11 +50,9 @@ loader.load(
                 node.receiveShadow = true;
             }
         });
-        
-        // Then load Monk
         loadMonk();
     },
-    undefined,
+    (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% loaded'),
     (error) => console.error("Skycastle error:", error)
 );
 
@@ -66,13 +66,14 @@ function loadMonk() {
             setupAnimations(gltf);
             setupJoystick();
         },
-        undefined,
+        (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% loaded'),
         (error) => console.error("Monk error:", error)
     );
 }
 
-// Position monk on skycastle floor
 function positionMonkOnFloor() {
+    if (!skycastleModel || !monk) return;
+    
     const raycaster = new THREE.Raycaster();
     raycaster.set(new THREE.Vector3(6.18, 100, 24.658), new THREE.Vector3(0, -1, 0));
     const intersects = raycaster.intersectObject(skycastleModel, true);
@@ -84,19 +85,27 @@ function positionMonkOnFloor() {
     }
 }
 
-// Animation Setup
 function setupAnimations(gltf) {
+    if (!gltf.animations || gltf.animations.length === 0) {
+        console.warn("No animations found in GLTF");
+        return;
+    }
+    
     mixer = new THREE.AnimationMixer(monk);
     
-    // Assuming animations are named "Idle" and "Run"
-    idleAction = mixer.clipAction(gltf.animations.find(a => a.name.includes("Idle")));
-    runAction = mixer.clipAction(gltf.animations.find(a => a.name.includes("Run")));
+    // Find animations (adjust names as needed)
+    const animations = gltf.animations;
+    idleAction = mixer.clipAction(
+        animations.find(a => a.name.toLowerCase().includes('idle')) || animations[0]
+    );
+    runAction = mixer.clipAction(
+        animations.find(a => a.name.toLowerCase().includes('run')) || animations[animations.length > 1 ? 1 : 0]
+    );
     
     idleAction.play();
     currentAction = idleAction;
 }
 
-// Virtual Joystick
 function setupJoystick() {
     const joystick = nipplejs.create({
         zone: document.getElementById('joystick-wrapper'),
@@ -111,7 +120,7 @@ function setupJoystick() {
         moveDirection.x = Math.sin(angle) * data.force;
         moveDirection.z = -Math.cos(angle) * data.force;
         
-        if (currentAction !== runAction) {
+        if (currentAction !== runAction && runAction) {
             idleAction.fadeOut(0.2);
             runAction.reset().fadeIn(0.2).play();
             currentAction = runAction;
@@ -120,35 +129,30 @@ function setupJoystick() {
 
     joystick.on('end', () => {
         moveDirection.set(0, 0, 0);
-        runAction.fadeOut(0.2);
+        if (runAction) runAction.fadeOut(0.2);
         idleAction.reset().fadeIn(0.2).play();
         currentAction = idleAction;
     });
 }
 
-// Update camera to follow monk
 function updateCamera() {
     if (!monk) return;
     
     const targetPosition = monk.position.clone().add(cameraOffset);
-    camera.position.lerp(targetPosition, 0.1); // Smooth follow
+    camera.position.lerp(targetPosition, 0.1);
     camera.lookAt(monk.position);
 }
 
-// Animation Loop
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     
-    // Update animations
     if (mixer) mixer.update(delta);
     
-    // Update character position and rotation
     if (monk && moveDirection.length() > 0) {
         monk.position.x += moveDirection.x * delta * moveSpeed;
         monk.position.z += moveDirection.z * delta * moveSpeed;
         
-        // Rotate character to face movement direction
         const targetRotation = Math.atan2(moveDirection.x, -moveDirection.z);
         monk.rotation.y = THREE.MathUtils.lerp(monk.rotation.y, targetRotation, rotationSpeed);
     }
@@ -157,11 +161,11 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Handle window resize
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / innerHeight;
+    camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Start
 animate();
