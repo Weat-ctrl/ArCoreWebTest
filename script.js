@@ -28,47 +28,63 @@ let mixer, idleAction, runAction, currentAction;
 let monk, skycastleModel;
 
 // Movement
-const moveDirection = new THREE.Vector3();
+const moveDirection = new THREE.Vector2(); // Using Vector2 for simpler joystick math
 const moveSpeed = 4;
-const rotationSpeed = 0.1;
+let targetRotation = 0;
 
-// Load Models
-const loader = new THREE.GLTFLoader();
+// Fixed loading issue
+function loadModel(url, onLoad) {
+    return new Promise((resolve, reject) => {
+        new THREE.GLTFLoader().load(
+            url,
+            (gltf) => {
+                onLoad?.(gltf);
+                resolve(gltf);
+            },
+            (xhr) => {
+                const percent = xhr.lengthComputable 
+                    ? (xhr.loaded / xhr.total * 100) + '% loaded' 
+                    : xhr.loaded + ' bytes loaded';
+                console.log(percent);
+            },
+            reject
+        );
+    });
+}
 
-// Remove this line - it's not needed and causes the error
-// loader.setResponseType('arraybuffer'); 
-
-// Load Skycastle
-loader.load(
-    'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-    (gltf) => {
-        skycastleModel = gltf.scene;
-        scene.add(skycastleModel);
-        skycastleModel.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
+async function init() {
+    try {
+        // Load Skycastle
+        const skycastle = await loadModel(
+            'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
+            (gltf) => {
+                skycastleModel = gltf.scene;
+                scene.add(skycastleModel);
+                skycastleModel.traverse((node) => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                    }
+                });
             }
-        });
-        loadMonk();
-    },
-    (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% loaded'),
-    (error) => console.error("Skycastle error:", error)
-);
+        );
 
-function loadMonk() {
-    loader.load(
-        'https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf',
-        (gltf) => {
-            monk = gltf.scene;
-            scene.add(monk);
-            positionMonkOnFloor();
-            setupAnimations(gltf);
-            setupJoystick();
-        },
-        (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% loaded'),
-        (error) => console.error("Monk error:", error)
-    );
+        // Load Monk
+        const monkGLTF = await loadModel(
+            'https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf',
+            (gltf) => {
+                monk = gltf.scene;
+                scene.add(monk);
+                positionMonkOnFloor();
+                setupAnimations(gltf);
+            }
+        );
+
+        setupJoystick();
+        animate();
+    } catch (error) {
+        console.error("Loading error:", error);
+    }
 }
 
 function positionMonkOnFloor() {
@@ -78,30 +94,30 @@ function positionMonkOnFloor() {
     raycaster.set(new THREE.Vector3(6.18, 100, 24.658), new THREE.Vector3(0, -1, 0));
     const intersects = raycaster.intersectObject(skycastleModel, true);
     
-    if (intersects.length > 0) {
-        monk.position.set(6.18, intersects[0].point.y, 24.658);
-    } else {
-        monk.position.set(6.18, 0, 24.658);
-    }
+    monk.position.set(
+        6.18,
+        intersects[0]?.point.y || 0,
+        24.658
+    );
 }
 
 function setupAnimations(gltf) {
-    if (!gltf.animations || gltf.animations.length === 0) {
-        console.warn("No animations found in GLTF");
+    if (!gltf.animations?.length) {
+        console.warn("No animations found");
         return;
     }
-    
+
     mixer = new THREE.AnimationMixer(monk);
     
-    // Find animations (adjust names as needed)
+    // Flexible animation detection
     const animations = gltf.animations;
     idleAction = mixer.clipAction(
-        animations.find(a => a.name.toLowerCase().includes('idle')) || animations[0]
+        animations.find(a => /idle|stand/i.test(a.name)) || animations[0]
     );
     runAction = mixer.clipAction(
-        animations.find(a => a.name.toLowerCase().includes('run')) || animations[animations.length > 1 ? 1 : 0]
+        animations.find(a => /run|walk/i.test(a.name)) || animations[1] || animations[0]
     );
-    
+
     idleAction.play();
     currentAction = idleAction;
 }
@@ -116,10 +132,17 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
+        // Convert joystick angle to movement direction
         const angle = data.angle.radian;
-        moveDirection.x = Math.sin(angle) * data.force;
-        moveDirection.z = -Math.cos(angle) * data.force;
+        moveDirection.set(
+            Math.sin(angle) * data.force,
+            -Math.cos(angle) * data.force
+        );
         
+        // Calculate target rotation (in radians)
+        targetRotation = Math.atan2(moveDirection.x, moveDirection.y);
+        
+        // Switch to run animation
         if (currentAction !== runAction && runAction) {
             idleAction.fadeOut(0.2);
             runAction.reset().fadeIn(0.2).play();
@@ -128,17 +151,45 @@ function setupJoystick() {
     });
 
     joystick.on('end', () => {
-        moveDirection.set(0, 0, 0);
+        moveDirection.set(0, 0);
         if (runAction) runAction.fadeOut(0.2);
         idleAction.reset().fadeIn(0.2).play();
         currentAction = idleAction;
     });
 }
 
+function updateCharacter(delta) {
+    if (!monk) return;
+    
+    // Apply movement if joystick is active
+    if (moveDirection.length() > 0) {
+        const moveX = moveDirection.x * moveSpeed * delta;
+        const moveZ = moveDirection.y * moveSpeed * delta;
+        
+        monk.position.x += moveX;
+        monk.position.z += moveZ;
+        
+        // Smooth rotation towards movement direction
+        monk.rotation.y = THREE.MathUtils.lerp(
+            monk.rotation.y,
+            targetRotation,
+            Math.min(1, 10 * delta) // Smoothing factor
+        );
+    }
+}
+
 function updateCamera() {
     if (!monk) return;
     
-    const targetPosition = monk.position.clone().add(cameraOffset);
+    // Calculate camera position behind character
+    const behind = new THREE.Vector3(0, 0, -1)
+        .applyQuaternion(monk.quaternion)
+        .multiplyScalar(Math.abs(cameraOffset.z));
+    
+    const targetPosition = monk.position.clone()
+        .add(behind)
+        .add(new THREE.Vector3(0, cameraOffset.y, 0));
+    
     camera.position.lerp(targetPosition, 0.1);
     camera.lookAt(monk.position);
 }
@@ -148,24 +199,17 @@ function animate() {
     const delta = clock.getDelta();
     
     if (mixer) mixer.update(delta);
-    
-    if (monk && moveDirection.length() > 0) {
-        monk.position.x += moveDirection.x * delta * moveSpeed;
-        monk.position.z += moveDirection.z * delta * moveSpeed;
-        
-        const targetRotation = Math.atan2(moveDirection.x, -moveDirection.z);
-        monk.rotation.y = THREE.MathUtils.lerp(monk.rotation.y, targetRotation, rotationSpeed);
-    }
-    
+    updateCharacter(delta);
     updateCamera();
     renderer.render(scene, camera);
 }
 
+// Handle resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Start
-animate();
+// Start everything
+init();
