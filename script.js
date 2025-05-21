@@ -28,18 +28,18 @@ let mixer, idleAction, runAction, currentAction;
 let monk, skycastleModel;
 
 // Movement
-const moveDirection = new THREE.Vector2(); // Using Vector2 for simpler joystick math
+const moveDirection = new THREE.Vector2();
 const moveSpeed = 4;
 let targetRotation = 0;
+let isMoving = false;
 
-// Fixed loading issue
-function loadModel(url, onLoad) {
+// Improved model loading
+async function loadModel(url) {
     return new Promise((resolve, reject) => {
-        new THREE.GLTFLoader().load(
+        new THREE.FileLoader().setResponseType('arraybuffer').load(
             url,
-            (gltf) => {
-                onLoad?.(gltf);
-                resolve(gltf);
+            (data) => {
+                new THREE.GLTFLoader().parse(data, '', resolve, reject);
             },
             (xhr) => {
                 const percent = xhr.lengthComputable 
@@ -55,31 +55,22 @@ function loadModel(url, onLoad) {
 async function init() {
     try {
         // Load Skycastle
-        const skycastle = await loadModel(
-            'https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb',
-            (gltf) => {
-                skycastleModel = gltf.scene;
-                scene.add(skycastleModel);
-                skycastleModel.traverse((node) => {
-                    if (node.isMesh) {
-                        node.castShadow = true;
-                        node.receiveShadow = true;
-                    }
-                });
+        const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
+        skycastleModel = skycastle.scene;
+        scene.add(skycastleModel);
+        skycastleModel.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
             }
-        );
+        });
 
         // Load Monk
-        const monkGLTF = await loadModel(
-            'https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf',
-            (gltf) => {
-                monk = gltf.scene;
-                scene.add(monk);
-                positionMonkOnFloor();
-                setupAnimations(gltf);
-            }
-        );
-
+        const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
+        monk = monkGLTF.scene;
+        scene.add(monk);
+        positionMonkOnFloor();
+        setupAnimations(monkGLTF);
         setupJoystick();
         animate();
     } catch (error) {
@@ -91,25 +82,20 @@ function positionMonkOnFloor() {
     if (!skycastleModel || !monk) return;
     
     const raycaster = new THREE.Raycaster();
-    raycaster.set(new THREE.Vector3(6.18, 100, 24.658), new THREE.Vector3(0, -1, 0));
+    raycaster.set(monk.position.clone().setY(100), new THREE.Vector3(0, -1, 0));
     const intersects = raycaster.intersectObject(skycastleModel, true);
     
-    monk.position.set(
-        6.18,
-        intersects[0]?.point.y || 0,
-        24.658
-    );
+    if (intersects.length > 0) {
+        monk.position.y = intersects[0].point.y;
+    }
 }
 
 function setupAnimations(gltf) {
-    if (!gltf.animations?.length) {
-        console.warn("No animations found");
-        return;
-    }
-
+    if (!gltf.animations?.length) return;
+    
     mixer = new THREE.AnimationMixer(monk);
     
-    // Flexible animation detection
+    // Find animations (case insensitive)
     const animations = gltf.animations;
     idleAction = mixer.clipAction(
         animations.find(a => /idle|stand/i.test(a.name)) || animations[0]
@@ -132,40 +118,45 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        // Convert joystick angle to movement direction
-        const angle = data.angle.radian;
+        // Corrected movement direction calculation
         moveDirection.set(
-            Math.sin(angle) * data.force,
-            -Math.cos(angle) * data.force
+            data.vector.x,  // Left/Right (-1 to 1)
+            -data.vector.y // Forward/Back (-1 to 1)
         );
         
-        // Calculate target rotation (in radians)
+        // Calculate target rotation based on joystick direction
         targetRotation = Math.atan2(moveDirection.x, moveDirection.y);
         
-        // Switch to run animation
-        if (currentAction !== runAction && runAction) {
+        // Animation control
+        if (!isMoving) {
             idleAction.fadeOut(0.2);
             runAction.reset().fadeIn(0.2).play();
             currentAction = runAction;
+            isMoving = true;
         }
     });
 
     joystick.on('end', () => {
         moveDirection.set(0, 0);
-        if (runAction) runAction.fadeOut(0.2);
-        idleAction.reset().fadeIn(0.2).play();
-        currentAction = idleAction;
+        if (isMoving) {
+            runAction.fadeOut(0.2);
+            idleAction.reset().fadeIn(0.2).play();
+            currentAction = idleAction;
+            isMoving = false;
+        }
     });
 }
 
 function updateCharacter(delta) {
-    if (!monk) return;
+    if (!monk || !skycastleModel) return;
     
     // Apply movement if joystick is active
     if (moveDirection.length() > 0) {
+        // Calculate movement vector based on current rotation
         const moveX = moveDirection.x * moveSpeed * delta;
         const moveZ = moveDirection.y * moveSpeed * delta;
         
+        // Update position
         monk.position.x += moveX;
         monk.position.z += moveZ;
         
@@ -173,9 +164,12 @@ function updateCharacter(delta) {
         monk.rotation.y = THREE.MathUtils.lerp(
             monk.rotation.y,
             targetRotation,
-            Math.min(1, 10 * delta) // Smoothing factor
+            Math.min(1, 10 * delta)
         );
     }
+    
+    // Keep character on terrain
+    positionMonkOnFloor();
 }
 
 function updateCamera() {
