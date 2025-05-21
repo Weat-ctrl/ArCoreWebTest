@@ -32,15 +32,16 @@ const moveDirection = new THREE.Vector2();
 const moveSpeed = 4;
 let targetRotation = 0;
 let isMoving = false;
+const gravity = -9.8;
+let velocityY = 0;
 
-// Improved model loading
+// Improved model loading without XMLHttpRequest errors
 async function loadModel(url) {
     return new Promise((resolve, reject) => {
-        new THREE.FileLoader().setResponseType('arraybuffer').load(
+        const loader = new THREE.GLTFLoader();
+        loader.load(
             url,
-            (data) => {
-                new THREE.GLTFLoader().parse(data, '', resolve, reject);
-            },
+            resolve,
             (xhr) => {
                 const percent = xhr.lengthComputable 
                     ? (xhr.loaded / xhr.total * 100) + '% loaded' 
@@ -78,16 +79,46 @@ async function init() {
     }
 }
 
+// Enhanced terrain collision
 function positionMonkOnFloor() {
     if (!skycastleModel || !monk) return;
     
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().setY(100), new THREE.Vector3(0, -1, 0));
-    const intersects = raycaster.intersectObject(skycastleModel, true);
+    // Create multiple rays around the character for better collision
+    const rayOrigin = monk.position.clone();
+    rayOrigin.y += 0.5; // Start slightly above feet
     
-    if (intersects.length > 0) {
-        monk.position.y = intersects[0].point.y;
+    const rayDirections = [
+        new THREE.Vector3(0, -1, 0), // Center
+        new THREE.Vector3(0.5, -1, 0), // Right
+        new THREE.Vector3(-0.5, -1, 0), // Left
+        new THREE.Vector3(0, -1, 0.5), // Front
+        new THREE.Vector3(0, -1, -0.5) // Back
+    ];
+    
+    const raycaster = new THREE.Raycaster();
+    let lowestPoint = monk.position.y;
+    
+    rayDirections.forEach(dir => {
+        raycaster.set(rayOrigin, dir.normalize());
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        
+        if (intersects.length > 0) {
+            const groundY = intersects[0].point.y;
+            if (groundY < lowestPoint) {
+                lowestPoint = groundY;
+            }
+        }
+    });
+    
+    // Apply gravity and ground collision
+    if (monk.position.y > lowestPoint + 0.1) {
+        velocityY += gravity * clock.getDelta();
+    } else {
+        velocityY = 0;
+        monk.position.y = lowestPoint + 0.1; // Small offset to prevent sinking
     }
+    
+    monk.position.y += velocityY * clock.getDelta();
 }
 
 function setupAnimations(gltf) {
@@ -118,10 +149,10 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        // Corrected movement direction calculation
+        // Corrected joystick orientation (now matches screen direction)
         moveDirection.set(
-            data.vector.x,  // Left/Right (-1 to 1)
-            -data.vector.y // Forward/Back (-1 to 1)
+            data.vector.x,  // Left/Right
+            -data.vector.y  // Forward/Back (inverted to match screen)
         );
         
         // Calculate target rotation based on joystick direction
@@ -156,16 +187,21 @@ function updateCharacter(delta) {
         const moveX = moveDirection.x * moveSpeed * delta;
         const moveZ = moveDirection.y * moveSpeed * delta;
         
-        // Update position
-        monk.position.x += moveX;
-        monk.position.z += moveZ;
+        // Create movement vector relative to camera
+        const moveVector = new THREE.Vector3(moveX, 0, moveZ);
+        moveVector.applyQuaternion(camera.quaternion);
+        moveVector.y = 0; // Keep movement horizontal
         
-        // Smooth rotation towards movement direction
-        monk.rotation.y = THREE.MathUtils.lerp(
-            monk.rotation.y,
-            targetRotation,
-            Math.min(1, 10 * delta)
-        );
+        // Update position
+        monk.position.x += moveVector.x;
+        monk.position.z += moveVector.z;
+        
+        // Only rotate if actually moving (not just pushing joystick slightly)
+        if (moveDirection.length() > 0.3) {
+            // Calculate rotation based on camera-relative movement
+            const angle = Math.atan2(moveVector.x, moveVector.z);
+            monk.rotation.y = angle;
+        }
     }
     
     // Keep character on terrain
