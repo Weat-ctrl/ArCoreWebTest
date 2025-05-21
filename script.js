@@ -24,13 +24,13 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 4;
+const moveSpeed = 5; // Increased speed
 let isMoving = false;
 
 // Initialize monk at specific position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 
-// Simple model loader without XMLHttpRequest issues
+// Simple model loader
 function loadModel(url) {
     return new Promise((resolve) => {
         const loader = new THREE.GLTFLoader();
@@ -102,7 +102,7 @@ function resetMonkPosition() {
     velocityY = 0;
 }
 
-// Setup animations
+// Setup animations with proper speed
 function setupAnimations(gltf) {
     if (!gltf.animations?.length) return;
     
@@ -116,11 +116,14 @@ function setupAnimations(gltf) {
         gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]
     );
 
+    // Set animation speed
+    if (runAction) runAction.timeScale = 1.5; // Speed up run animation
+    
     idleAction.play();
     currentAction = idleAction;
 }
 
-// Joystick controls
+// Corrected joystick controls
 function setupJoystick() {
     const joystick = nipplejs.create({
         zone: document.getElementById('joystick-wrapper'),
@@ -131,9 +134,10 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
+        // CORRECTED DIRECTION MAPPING:
         moveDirection.set(
-            data.vector.x,    // Left/Right
-            -data.vector.y   // Forward/Back
+            data.vector.x,  // Left/Right (now correct)
+            data.vector.y   // Forward/Back (now correct)
         );
         
         if (!isMoving) {
@@ -160,7 +164,7 @@ function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', resetMonkPosition);
 }
 
-// Movement system
+// Movement system with corrected directions
 function updateMovement(delta) {
     if (!monk || moveDirection.length() === 0) return;
     
@@ -173,9 +177,9 @@ function updateMovement(delta) {
     const cameraRight = new THREE.Vector3();
     cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward);
     
-    // Calculate movement
+    // Calculate movement - CORRECTED DIRECTIONS
     const moveX = moveDirection.x * moveSpeed * delta;
-    const moveZ = moveDirection.y * moveSpeed * delta;
+    const moveZ = -moveDirection.y * moveSpeed * delta; // Note the negative sign here
     
     // Apply movement
     const prevPosition = monk.position.clone();
@@ -187,7 +191,7 @@ function updateMovement(delta) {
         monk.position.copy(prevPosition);
     }
     
-    // Rotate character
+    // Rotate character to face movement direction
     if (moveDirection.length() > 0.3) {
         const moveAngle = Math.atan2(
             cameraRight.x * moveX + cameraForward.x * moveZ,
