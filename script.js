@@ -15,7 +15,7 @@ container.appendChild(renderer.domElement);
 
 // Physics
 const clock = new THREE.Clock();
-const gravity = -15; // Stronger gravity for better snapping
+const gravity = -15;
 let velocityY = 0;
 const monkHeight = 2;
 const groundOffset = 0.1;
@@ -23,10 +23,10 @@ const groundOffset = 0.1;
 // Character
 let monk, skycastleModel;
 let mixer, idleAction, runAction;
-const moveSpeed = 8; // Faster movement
-const initialPosition = new THREE.Vector3(6.18, 50, 24.658); // Start higher to ensure ground snap
+const moveSpeed = 8;
+const initialPosition = new THREE.Vector3(6.18, 50, 24.658);
 
-// Load Models
+// Initialize
 async function init() {
     // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -69,10 +69,14 @@ async function init() {
         monk.position.copy(initialPosition);
         
         // Setup animations
-        if (monkGLTF.animations?.length) {
+        if (monkGLTF.animations && monkGLTF.animations.length) {
             mixer = new THREE.AnimationMixer(monk);
-            idleAction = mixer.clipAction(monkGLTF.animations.find(a => /idle/i.test(a.name)) || mixer.clipAction(monkGLTF.animations[0]);
-            runAction = mixer.clipAction(monkGLTF.animations.find(a => /run|walk/i.test(a.name)) || idleAction;
+            idleAction = mixer.clipAction(
+                monkGLTF.animations.find(a => /idle/i.test(a.name)) || monkGLTF.animations[0]
+            );
+            runAction = mixer.clipAction(
+                monkGLTF.animations.find(a => /run|walk/i.test(a.name)) || idleAction
+            );
             idleAction.play();
         }
     } catch (e) {
@@ -84,7 +88,7 @@ async function init() {
     animate();
 }
 
-// Corrected Joystick Controls
+// Joystick Controls
 function setupJoystick() {
     const joystick = nipplejs.create({
         zone: document.getElementById('joystick-wrapper'),
@@ -94,11 +98,9 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        // CORRECTED: Natural joystick directions
-        const forward = -data.vector.y; // Pull down = positive forward
+        const forward = -data.vector.y;
         const right = data.vector.x;
         
-        // Move relative to camera
         const cameraForward = new THREE.Vector3();
         camera.getWorldDirection(cameraForward);
         cameraForward.y = 0;
@@ -109,7 +111,6 @@ function setupJoystick() {
             cameraForward
         );
         
-        // Apply movement
         monk.position.add(
             cameraForward.multiplyScalar(forward * moveSpeed * 0.05)
         );
@@ -117,7 +118,6 @@ function setupJoystick() {
             cameraRight.multiplyScalar(right * moveSpeed * 0.05)
         );
         
-        // Face movement direction
         if (Math.abs(forward) > 0.1 || Math.abs(right) > 0.1) {
             const targetAngle = Math.atan2(right, forward);
             monk.rotation.y = targetAngle;
@@ -135,11 +135,10 @@ function setupJoystick() {
     });
 }
 
-// Enhanced Ground Collision
+// Ground Collision
 function updatePhysics() {
     if (!monk || !skycastleModel) return;
     
-    // Multiple raycasts for better collision
     const origins = [
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(0.5, 0, 0),
@@ -158,13 +157,12 @@ function updatePhysics() {
         );
         
         const intersects = raycaster.intersectObject(skycastleModel, true);
-        if (intersects[0]?.distance < monkHeight) {
+        if (intersects[0] && intersects[0].distance < monkHeight) {
             onGround = true;
             lowestPoint = Math.min(lowestPoint, intersects[0].point.y);
         }
     });
     
-    // Apply gravity/snapping
     if (!onGround) {
         velocityY += gravity * clock.getDelta();
     } else {
@@ -175,11 +173,13 @@ function updatePhysics() {
     monk.position.y += velocityY * clock.getDelta();
 }
 
-// Reset Function
+// Reset Button
 function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', () => {
-        monk.position.copy(initialPosition);
-        velocityY = 0;
+        if (monk) {
+            monk.position.copy(initialPosition);
+            velocityY = 0;
+        }
     });
 }
 
@@ -191,14 +191,19 @@ function animate() {
     if (mixer) mixer.update(delta);
     updatePhysics();
     
-    // Camera follow
-    const targetPos = monk.position.clone()
-        .add(new THREE.Vector3(0, 3, -8));
+    const targetPos = monk ? monk.position.clone().add(new THREE.Vector3(0, 3, -8)) : new THREE.Vector3(13, 48, 63);
     camera.position.lerp(targetPos, 0.1);
-    camera.lookAt(monk.position);
+    if (monk) camera.lookAt(monk.position);
     
     renderer.render(scene, camera);
 }
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
 // Start
 init();
