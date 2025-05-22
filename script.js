@@ -62,7 +62,7 @@ async function init() {
 
     // Load Skycastle
     try {
-        const skycastle = await loadModel('skycastle.glb');
+        const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         if (skycastleModel instanceof THREE.Object3D) {
             scene.add(skycastleModel);
@@ -79,7 +79,7 @@ async function init() {
 
     // Load Monk
     try {
-        const monkGLTF = await loadModel('Monk.glb');
+        const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
         
         if (monk instanceof THREE.Object3D) {
