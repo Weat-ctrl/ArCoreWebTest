@@ -13,101 +13,195 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(5, 10, 7);
-directionalLight.castShadow = true;
-scene.add(directionalLight);
-
-// Animation System
+// Physics
 const clock = new THREE.Clock();
-let mixer, idleAction, runAction, currentAction;
-let monk, skycastleModel;
+const gravity = -25; // Stronger gravity for better snapping
+let velocityY = 0;
+const monkHeight = 1.8;
+const groundOffset = 0.05;
+const slopeLimit = 0.7; // 45-degree slope limit
 
 // Movement
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 4;
-let targetRotation = 0;
+const moveSpeed = 5;
 let isMoving = false;
+const initialPosition = new THREE.Vector3(6.18, 50, 24.658); // Start high for ground snap
 
-// Improved model loading
+// Character
+let monk, skycastleModel;
+let mixer, idleAction, runAction;
+
+// Improved model loader
 async function loadModel(url) {
-    return new Promise((resolve, reject) => {
-        new THREE.FileLoader().setResponseType('arraybuffer').load(
+    return new Promise((resolve) => {
+        new THREE.GLTFLoader().load(
             url,
-            (data) => {
-                new THREE.GLTFLoader().parse(data, '', resolve, reject);
-            },
-            (xhr) => {
-                const percent = xhr.lengthComputable 
-                    ? (xhr.loaded / xhr.total * 100) + '% loaded' 
-                    : xhr.loaded + ' bytes loaded';
-                console.log(percent);
-            },
-            reject
+            (gltf) => resolve(gltf),
+            undefined,
+            () => resolve({ scene: new THREE.Group(), animations: [] })
         );
     });
 }
 
+// Initialize
 async function init() {
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 7);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+    // Load Skycastle
     try {
-        // Load Skycastle
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         scene.add(skycastleModel);
-        skycastleModel.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-            }
-        });
+    } catch (e) {
+        console.error("Skycastle load error:", e);
+        skycastleModel = new THREE.Group();
+        scene.add(skycastleModel);
+    }
 
-        // Load Monk
-        const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
+    // Load Monk
+    try {
+        const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.glb');
         monk = monkGLTF.scene;
         scene.add(monk);
-        positionMonkOnFloor();
-        setupAnimations(monkGLTF);
-        setupJoystick();
-        animate();
-    } catch (error) {
-        console.error("Loading error:", error);
+        monk.position.copy(initialPosition);
+        
+        // Setup animations
+        if (monkGLTF.animations?.length) {
+            mixer = new THREE.AnimationMixer(monk);
+            idleAction = mixer.clipAction(
+                monkGLTF.animations.find(a => /idle/i.test(a.name)) || monkGLTF.animations[0]
+            );
+            runAction = mixer.clipAction(
+                monkGLTF.animations.find(a => /run|walk/i.test(a.name)) || monkGLTF.animations[0]
+            );
+            idleAction.play();
+        }
+    } catch (e) {
+        console.error("Monk load error:", e);
+        monk = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 2, 1),
+            new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        );
+        scene.add(monk);
+    }
+
+    setupJoystick();
+    setupResetButton();
+    animate();
+}
+
+// Enhanced collision detection
+function updatePhysics() {
+    if (!monk || !skycastleModel) return;
+
+    // Multiple raycasts for ground detection
+    const rayOrigins = [
+        new THREE.Vector3(0, 0, 0),      // Center
+        new THREE.Vector3(0.4, 0, 0),    // Right
+        new THREE.Vector3(-0.4, 0, 0),   // Left
+        new THREE.Vector3(0, 0, 0.4),    // Front
+        new THREE.Vector3(0, 0, -0.4)    // Back
+    ];
+
+    let onGround = false;
+    let groundY = -Infinity;
+    let groundNormal = new THREE.Vector3(0, 1, 0);
+
+    // Check ground
+    rayOrigins.forEach(offset => {
+        const origin = monk.position.clone().add(offset);
+        origin.y += monkHeight/2;
+        
+        const raycaster = new THREE.Raycaster(origin, new THREE.Vector3(0, -1, 0));
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        
+        if (intersects[0] && intersects[0].distance <= monkHeight) {
+            onGround = true;
+            groundY = Math.max(groundY, intersects[0].point.y);
+            groundNormal = intersects[0].face.normal.clone().normalize();
+        }
+    });
+
+    // Slope check (prevent climbing steep surfaces)
+    const canMoveOnSlope = groundNormal.y > slopeLimit;
+
+    // Apply gravity or snap to ground
+    if (!onGround || !canMoveOnSlope) {
+        velocityY += gravity * clock.getDelta();
+    } else {
+        velocityY = 0;
+        monk.position.y = groundY + monkHeight/2 + groundOffset;
+    }
+
+    monk.position.y += velocityY * clock.getDelta();
+    return canMoveOnSlope;
+}
+
+// Movement system with collision
+function updateMovement(delta) {
+    if (!monk || moveDirection.length() === 0) return;
+
+    const canMove = updatePhysics(); // Updates physics and checks slope
+    
+    if (!canMove) return; // Don't move if on too steep slope
+
+    // Get camera-relative directions
+    const cameraForward = new THREE.Vector3();
+    camera.getWorldDirection(cameraForward);
+    cameraForward.y = 0;
+    cameraForward.normalize();
+
+    const cameraRight = new THREE.Vector3().crossVectors(
+        new THREE.Vector3(0, 1, 0),
+        cameraForward
+    );
+
+    // Calculate movement
+    const moveX = moveDirection.x * moveSpeed * delta;
+    const moveZ = moveDirection.y * moveSpeed * delta;
+
+    // Store previous position for collision response
+    const prevPosition = monk.position.clone();
+
+    // Apply movement
+    monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
+    monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+
+    // Wall collision check
+    const moveVector = new THREE.Vector3(
+        monk.position.x - prevPosition.x,
+        0,
+        monk.position.z - prevPosition.z
+    );
+    
+    if (moveVector.length() > 0.01) {
+        const raycaster = new THREE.Raycaster(
+            prevPosition.clone().setY(monk.position.y),
+            moveVector.clone().normalize()
+        );
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        
+        if (intersects[0] && intersects[0].distance < moveVector.length()) {
+            monk.position.copy(prevPosition);
+        } else {
+            // Face movement direction if valid
+            const targetAngle = Math.atan2(
+                cameraRight.x * moveX + cameraForward.x * moveZ,
+                cameraRight.z * moveX + cameraForward.z * moveZ
+            );
+            monk.rotation.y = targetAngle;
+        }
     }
 }
 
-function positionMonkOnFloor() {
-    if (!skycastleModel || !monk) return;
-    
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().setY(100), new THREE.Vector3(0, -1, 0));
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    
-    if (intersects.length > 0) {
-        monk.position.y = intersects[0].point.y;
-    }
-}
-
-function setupAnimations(gltf) {
-    if (!gltf.animations?.length) return;
-    
-    mixer = new THREE.AnimationMixer(monk);
-    
-    // Find animations (case insensitive)
-    const animations = gltf.animations;
-    idleAction = mixer.clipAction(
-        animations.find(a => /idle|stand/i.test(a.name)) || animations[0]
-    );
-    runAction = mixer.clipAction(
-        animations.find(a => /run|walk/i.test(a.name)) || animations[1] || animations[0]
-    );
-
-    idleAction.play();
-    currentAction = idleAction;
-}
-
+// Joystick controls
 function setupJoystick() {
     const joystick = nipplejs.create({
         zone: document.getElementById('joystick-wrapper'),
@@ -118,20 +212,11 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        // Corrected movement direction calculation
-        moveDirection.set(
-            data.vector.x,  // Left/Right (-1 to 1)
-            -data.vector.y // Forward/Back (-1 to 1)
-        );
+        moveDirection.set(data.vector.x, -data.vector.y); // Corrected directions
         
-        // Calculate target rotation based on joystick direction
-        targetRotation = Math.atan2(moveDirection.x, moveDirection.y);
-        
-        // Animation control
-        if (!isMoving) {
-            idleAction.fadeOut(0.2);
+        if (!isMoving && runAction) {
+            idleAction?.fadeOut(0.2);
             runAction.reset().fadeIn(0.2).play();
-            currentAction = runAction;
             isMoving = true;
         }
     });
@@ -139,61 +224,42 @@ function setupJoystick() {
     joystick.on('end', () => {
         moveDirection.set(0, 0);
         if (isMoving) {
-            runAction.fadeOut(0.2);
-            idleAction.reset().fadeIn(0.2).play();
-            currentAction = idleAction;
+            runAction?.fadeOut(0.2);
+            idleAction?.reset().fadeIn(0.2).play();
             isMoving = false;
         }
     });
 }
 
-function updateCharacter(delta) {
-    if (!monk || !skycastleModel) return;
-    
-    // Apply movement if joystick is active
-    if (moveDirection.length() > 0) {
-        // Calculate movement vector based on current rotation
-        const moveX = moveDirection.x * moveSpeed * delta;
-        const moveZ = moveDirection.y * moveSpeed * delta;
-        
-        // Update position
-        monk.position.x += moveX;
-        monk.position.z += moveZ;
-        
-        // Smooth rotation towards movement direction
-        monk.rotation.y = THREE.MathUtils.lerp(
-            monk.rotation.y,
-            targetRotation,
-            Math.min(1, 10 * delta)
-        );
+// Reset button
+function setupResetButton() {
+    const btn = document.getElementById('reset-btn');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            monk.position.copy(initialPosition);
+            velocityY = 0;
+        });
     }
-    
-    // Keep character on terrain
-    positionMonkOnFloor();
 }
 
+// Camera follow
 function updateCamera() {
     if (!monk) return;
     
-    // Calculate camera position behind character
-    const behind = new THREE.Vector3(0, 0, -1)
-        .applyQuaternion(monk.quaternion)
-        .multiplyScalar(Math.abs(cameraOffset.z));
+    const targetPos = monk.position.clone()
+        .add(new THREE.Vector3(0, 3, -8));
     
-    const targetPosition = monk.position.clone()
-        .add(behind)
-        .add(new THREE.Vector3(0, cameraOffset.y, 0));
-    
-    camera.position.lerp(targetPosition, 0.1);
+    camera.position.lerp(targetPos, 0.1);
     camera.lookAt(monk.position);
 }
 
+// Animation loop
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     
     if (mixer) mixer.update(delta);
-    updateCharacter(delta);
+    updateMovement(delta);
     updateCamera();
     renderer.render(scene, camera);
 }
@@ -205,5 +271,5 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Start everything
+// Start
 init();
