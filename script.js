@@ -24,13 +24,13 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 10; // Faster movement
+const moveSpeed = 4;
 let isMoving = false;
 
 // Initialize monk at specific position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 
-// Simple model loader without XMLHttpRequest issues
+// Simple model loader
 function loadModel(url) {
     return new Promise((resolve) => {
         const loader = new THREE.GLTFLoader();
@@ -47,7 +47,7 @@ function loadModel(url) {
 async function init() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
-    
+
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 10, 7);
     directionalLight.castShadow = true;
@@ -57,18 +57,18 @@ async function init() {
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         scene.add(skycastleModel);
-        
+
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
         scene.add(monk);
-        
+
         monk.position.copy(initialMonkPosition);
         snapToGround();
-        
+
         setupAnimations(monkGLTF);
         setupJoystick();
         setupResetButton();
-        
+
         animate();
     } catch (error) {
         console.error("Initialization error:", error);
@@ -77,13 +77,13 @@ async function init() {
 
 function snapToGround() {
     if (!monk || !skycastleModel) return;
-    
+
     const raycaster = new THREE.Raycaster();
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 10, 0)), new THREE.Vector3(0, -1, 0));
-    
+
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
-        monk.position.y = intersects[0].point.y + monkHeight/2 + groundOffset;
+        monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
     }
 }
 
@@ -96,14 +96,14 @@ function resetMonkPosition() {
 
 function setupAnimations(gltf) {
     if (!gltf.animations?.length) return;
-    
+
     mixer = new THREE.AnimationMixer(monk);
-    
+
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
-    
-    runAction.setEffectiveTimeScale(1.5); // FIXED: Speed up run animation
-    
+
+    runAction.setEffectiveTimeScale(2); // Speed up animation
+
     idleAction.play();
     currentAction = idleAction;
 }
@@ -118,11 +118,7 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        moveDirection.set(
-            data.vector.x,      // Left/Right
-            -data.vector.y      // Forward/Back
-        );
-        
+        moveDirection.set(data.vector.x, -data.vector.y); // Invert Y to fix forward
         if (!isMoving) {
             idleAction?.fadeOut(0.2);
             runAction?.reset().fadeIn(0.2).play();
@@ -148,17 +144,17 @@ function setupResetButton() {
 
 function updateMovement(delta) {
     if (!monk || moveDirection.length() === 0) return;
-    
+
     const cameraForward = new THREE.Vector3();
     camera.getWorldDirection(cameraForward);
     cameraForward.y = 0;
     cameraForward.normalize();
-    
+
     const cameraRight = new THREE.Vector3();
-    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)); // FIXED: Corrected left/right
+    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0));
 
     const moveX = moveDirection.x * moveSpeed * delta;
-    const moveZ = moveDirection.y * moveSpeed * delta;
+    const moveZ = -moveDirection.y * moveSpeed * delta; // Invert forward
 
     const prevPosition = monk.position.clone();
     monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
@@ -179,38 +175,38 @@ function updateMovement(delta) {
 
 function checkTerrainCollision() {
     if (!monk || !skycastleModel) return true;
-    
+
     const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight/2, 0)), new THREE.Vector3(0, -1, 0));
-    
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
+
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
         const groundY = intersects[0].point.y;
-        if (monk.position.y > groundY + monkHeight/2) {
+        if (monk.position.y > groundY + monkHeight / 2) {
             velocityY += gravity * clock.getDelta();
         } else {
             velocityY = 0;
-            monk.position.y = groundY + monkHeight/2 + groundOffset;
+            monk.position.y = groundY + monkHeight / 2 + groundOffset;
         }
     } else {
         velocityY += gravity * clock.getDelta();
     }
-    
+
     monk.position.y += velocityY * clock.getDelta();
     return intersects.length > 0;
 }
 
 function updateCamera() {
     if (!monk) return;
-    
+
     const behind = new THREE.Vector3(0, 0, -1)
         .applyQuaternion(monk.quaternion)
         .multiplyScalar(Math.abs(cameraOffset.z));
-    
+
     const targetPosition = monk.position.clone()
         .add(behind)
         .add(new THREE.Vector3(0, cameraOffset.y, 0));
-    
+
     camera.position.lerp(targetPosition, 0.1);
     camera.lookAt(monk.position);
 }
@@ -218,7 +214,7 @@ function updateCamera() {
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-    
+
     if (mixer) mixer.update(delta);
     updateMovement(delta);
     updateCamera();
