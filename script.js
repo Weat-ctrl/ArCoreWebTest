@@ -24,7 +24,7 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 10; // FIXED: Increased from 4 to 10
+const moveSpeed = 10; // Faster movement
 let isMoving = false;
 
 // Initialize monk at specific position
@@ -45,7 +45,6 @@ function loadModel(url) {
 
 // Initialize
 async function init() {
-    // Basic lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
     
@@ -55,21 +54,17 @@ async function init() {
     scene.add(directionalLight);
 
     try {
-        // Load Skycastle
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         scene.add(skycastleModel);
         
-        // Load Monk
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
         scene.add(monk);
         
-        // Set initial position
         monk.position.copy(initialMonkPosition);
         snapToGround();
         
-        // Setup systems
         setupAnimations(monkGLTF);
         setupJoystick();
         setupResetButton();
@@ -80,13 +75,11 @@ async function init() {
     }
 }
 
-// Snap character to ground
 function snapToGround() {
     if (!monk || !skycastleModel) return;
     
     const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 10, 0)), 
-                new THREE.Vector3(0, -1, 0));
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 10, 0)), new THREE.Vector3(0, -1, 0));
     
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
@@ -94,7 +87,6 @@ function snapToGround() {
     }
 }
 
-// Reset position
 function resetMonkPosition() {
     if (!monk) return;
     monk.position.copy(initialMonkPosition);
@@ -102,25 +94,20 @@ function resetMonkPosition() {
     velocityY = 0;
 }
 
-// Setup animations
 function setupAnimations(gltf) {
     if (!gltf.animations?.length) return;
     
     mixer = new THREE.AnimationMixer(monk);
     
-    // Find animations
-    idleAction = mixer.clipAction(
-        gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
-    );
-    runAction = mixer.clipAction(
-        gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]
-    );
-
+    idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
+    runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
+    
+    runAction.setEffectiveTimeScale(1.5); // FIXED: Speed up run animation
+    
     idleAction.play();
     currentAction = idleAction;
 }
 
-// Joystick controls
 function setupJoystick() {
     const joystick = nipplejs.create({
         zone: document.getElementById('joystick-wrapper'),
@@ -132,10 +119,10 @@ function setupJoystick() {
 
     joystick.on('move', (evt, data) => {
         moveDirection.set(
-            data.vector.x,   // FIXED: removed '-' from y to correct direction
-            data.vector.y
+            data.vector.x,      // Left/Right
+            -data.vector.y      // Forward/Back
         );
-
+        
         if (!isMoving) {
             idleAction?.fadeOut(0.2);
             runAction?.reset().fadeIn(0.2).play();
@@ -155,39 +142,32 @@ function setupJoystick() {
     });
 }
 
-// Reset button
 function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', resetMonkPosition);
 }
 
-// Movement system
 function updateMovement(delta) {
     if (!monk || moveDirection.length() === 0) return;
     
-    // Get camera-relative directions
     const cameraForward = new THREE.Vector3();
     camera.getWorldDirection(cameraForward);
     cameraForward.y = 0;
     cameraForward.normalize();
     
     const cameraRight = new THREE.Vector3();
-    cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward);
-    
-    // Calculate movement
+    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)); // FIXED: Corrected left/right
+
     const moveX = moveDirection.x * moveSpeed * delta;
     const moveZ = moveDirection.y * moveSpeed * delta;
-    
-    // Apply movement
+
     const prevPosition = monk.position.clone();
     monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
     monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
-    
-    // Check collision
+
     if (!checkTerrainCollision()) {
         monk.position.copy(prevPosition);
     }
-    
-    // Rotate character
+
     if (moveDirection.length() > 0.3) {
         const moveAngle = Math.atan2(
             cameraRight.x * moveX + cameraForward.x * moveZ,
@@ -197,13 +177,11 @@ function updateMovement(delta) {
     }
 }
 
-// Terrain collision
 function checkTerrainCollision() {
     if (!monk || !skycastleModel) return true;
     
     const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight/2, 0)), 
-                new THREE.Vector3(0, -1, 0));
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight/2, 0)), new THREE.Vector3(0, -1, 0));
     
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
@@ -222,7 +200,6 @@ function checkTerrainCollision() {
     return intersects.length > 0;
 }
 
-// Camera system
 function updateCamera() {
     if (!monk) return;
     
@@ -238,7 +215,6 @@ function updateCamera() {
     camera.lookAt(monk.position);
 }
 
-// Animation loop
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -249,12 +225,10 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Handle resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Start the app
 init();
