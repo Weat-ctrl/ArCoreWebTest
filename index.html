@@ -5,15 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mobile 3D Character</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Load VirtualJoystick.js first -->
+    <script src="https://cdn.jsdelivr.net/npm/virtual-joystick.js@2.9.3/virtualjoystick.js"></script>
+    <!-- Then Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
-    <div id="joystick-wrapper"></div>
+    
+    <!-- Changed from joystick-wrapper to joystick-container for clarity -->
+    <div id="joystick-container">
+        <div id="joystick-base"></div>
+        <div id="joystick-stick"></div>
+    </div>
+    
     <button id="reset-btn">Reset Position</button>
     
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
     <script src="script.js"></script>
 </body>
-                                                                                                   </html>
+</html>
