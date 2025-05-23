@@ -30,7 +30,6 @@ let isMoving = false;
 // Initialize monk at specific position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 
-// Simple model loader
 function loadModel(url) {
     return new Promise((resolve) => {
         const loader = new THREE.GLTFLoader();
@@ -43,7 +42,6 @@ function loadModel(url) {
     });
 }
 
-// Initialize
 async function init() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
@@ -60,6 +58,7 @@ async function init() {
 
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
+        monk.scale.set(0.5, 0.5, 0.5);
         scene.add(monk);
 
         monk.position.copy(initialMonkPosition);
@@ -99,10 +98,14 @@ function setupAnimations(gltf) {
 
     mixer = new THREE.AnimationMixer(monk);
 
-    idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
-    runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
+    idleAction = mixer.clipAction(
+        gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
+    );
+    runAction = mixer.clipAction(
+        gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]
+    );
 
-    runAction.setEffectiveTimeScale(2); // Speed up animation
+    runAction.setEffectiveTimeScale(2);
 
     idleAction.play();
     currentAction = idleAction;
@@ -118,7 +121,11 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        moveDirection.set(data.vector.x, -data.vector.y); // Invert Y to fix forward
+        moveDirection.set(
+            data.vector.x,
+            -data.vector.y
+        );
+
         if (!isMoving) {
             idleAction?.fadeOut(0.2);
             runAction?.reset().fadeIn(0.2).play();
@@ -151,23 +158,26 @@ function updateMovement(delta) {
     cameraForward.normalize();
 
     const cameraRight = new THREE.Vector3();
-    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0));
+    cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward);
 
     const moveX = moveDirection.x * moveSpeed * delta;
-    const moveZ = -moveDirection.y * moveSpeed * delta; // Invert forward
+    const moveZ = moveDirection.y * moveSpeed * delta;
 
-    const prevPosition = monk.position.clone();
-    monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
-    monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+    const direction = new THREE.Vector3();
+    direction.copy(cameraRight).multiplyScalar(moveX).add(cameraForward.clone().multiplyScalar(moveZ));
 
-    if (!checkTerrainCollision()) {
-        monk.position.copy(prevPosition);
+    const nextPosition = monk.position.clone().add(direction);
+    const raycaster = new THREE.Raycaster(monk.position, direction.clone().normalize(), 0, 1);
+    const collisions = raycaster.intersectObject(skycastleModel, true);
+
+    if (collisions.length === 0) {
+        monk.position.copy(nextPosition);
     }
 
     if (moveDirection.length() > 0.3) {
         const moveAngle = Math.atan2(
-            cameraRight.x * moveX + cameraForward.x * moveZ,
-            cameraRight.z * moveX + cameraForward.z * moveZ
+            direction.x,
+            direction.z
         );
         monk.rotation.y = moveAngle;
     }
@@ -217,6 +227,7 @@ function animate() {
 
     if (mixer) mixer.update(delta);
     updateMovement(delta);
+    checkTerrainCollision();
     updateCamera();
     renderer.render(scene, camera);
 }
@@ -228,3 +239,4 @@ window.addEventListener('resize', () => {
 });
 
 init();
+    
