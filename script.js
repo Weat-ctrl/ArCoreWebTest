@@ -19,12 +19,14 @@ const gravity = -9.8;
 let velocityY = 0;
 const monkHeight = 2;
 const groundOffset = 0.1;
+const raycastOffset = 0.5; // How far ahead to check for ground
+const edgeThreshold = 0.5; // How much lower the ground can be before it's considered an edge
 
 // Character
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed =24;
+const moveSpeed = 24;
 let isMoving = false;
 
 // Initialize monk at specific position
@@ -143,6 +145,58 @@ function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', resetMonkPosition);
 }
 
+function checkTerrainCollision() {
+    if (!monk || !skycastleModel) return false;
+
+    const delta = clock.getDelta();
+    let canMove = true;
+    
+    // Check directly below the character
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
+    const intersects = raycaster.intersectObject(skycastleModel, true);
+    
+    // Check in the movement direction for edges
+    if (moveDirection.length() > 0) {
+        const moveDirection3D = new THREE.Vector3(moveDirection.x, 0, -moveDirection.y).normalize();
+        const forwardRayPos = monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)).add(moveDirection3D.clone().multiplyScalar(raycastOffset));
+        
+        const forwardRaycaster = new THREE.Raycaster();
+        forwardRaycaster.set(forwardRayPos, new THREE.Vector3(0, -1, 0));
+        const forwardIntersects = forwardRaycaster.intersectObject(skycastleModel, true);
+        
+        if (intersects.length > 0 && forwardIntersects.length > 0) {
+            const currentGround = intersects[0].point.y;
+            const forwardGround = forwardIntersects[0].point.y;
+            
+            // If the ground ahead is significantly lower, prevent movement
+            if (forwardGround < currentGround - edgeThreshold) {
+                canMove = false;
+            }
+        } else if (intersects.length > 0 && forwardIntersects.length === 0) {
+            // If there's ground below but none ahead, prevent movement
+            canMove = false;
+        }
+    }
+
+    // Apply gravity
+    if (intersects.length > 0) {
+        const groundY = intersects[0].point.y;
+        if (monk.position.y > groundY + monkHeight / 2 + groundOffset) {
+            velocityY += gravity * delta;
+        } else {
+            velocityY = 0;
+            monk.position.y = groundY + monkHeight / 2 + groundOffset;
+        }
+    } else {
+        velocityY += gravity * delta;
+    }
+
+    monk.position.y += velocityY * delta;
+    
+    return canMove;
+}
+
 function updateMovement(delta) {
     if (!monk || moveDirection.length() === 0) return;
 
@@ -155,13 +209,14 @@ function updateMovement(delta) {
     cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0));
 
     const moveX = moveDirection.x * moveSpeed * delta;
-    const moveZ = -moveDirection.y * moveSpeed * delta; // Invert forward
+    const moveZ = -moveDirection.y * moveSpeed * delta;
 
     const prevPosition = monk.position.clone();
     monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
     monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
 
-    if (!checkTerrainCollision()) {
+    // Only revert position if we can't move AND we're not already falling
+    if (!checkTerrainCollision() && velocityY >= 0) {
         monk.position.copy(prevPosition);
     }
 
@@ -172,29 +227,6 @@ function updateMovement(delta) {
         );
         monk.rotation.y = moveAngle;
     }
-}
-
-function checkTerrainCollision() {
-    if (!monk || !skycastleModel) return true;
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
-
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    if (intersects.length > 0) {
-        const groundY = intersects[0].point.y;
-        if (monk.position.y > groundY + monkHeight / 2) {
-            velocityY += gravity * clock.getDelta();
-        } else {
-            velocityY = 0;
-            monk.position.y = groundY + monkHeight / 2 + groundOffset;
-        }
-    } else {
-        velocityY += gravity * clock.getDelta();
-    }
-
-    monk.position.y += velocityY * clock.getDelta();
-    return intersects.length > 0;
 }
 
 function updateCamera() {
