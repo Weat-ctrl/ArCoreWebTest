@@ -61,6 +61,7 @@ async function init() {
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
         scene.add(monk);
+        monk.scale.set(0.5, 0.5, 0.5);
 
         monk.position.copy(initialMonkPosition);
         snapToGround();
