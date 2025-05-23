@@ -24,7 +24,7 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 24;
+const moveSpeed = 64;
 let isMoving = false;
 
 // Initialize monk at specific position
@@ -79,7 +79,6 @@ function snapToGround() {
 
     const raycaster = new THREE.Raycaster();
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 10, 0)), new THREE.Vector3(0, -1, 0));
-
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
         monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
@@ -98,15 +97,10 @@ function setupAnimations(gltf) {
 
     mixer = new THREE.AnimationMixer(monk);
 
-    idleAction = mixer.clipAction(
-        gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
-    );
-    runAction = mixer.clipAction(
-        gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]
-    );
+    idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
+    runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
     runAction.setEffectiveTimeScale(2);
-
     idleAction.play();
     currentAction = idleAction;
 }
@@ -122,8 +116,8 @@ function setupJoystick() {
 
     joystick.on('move', (evt, data) => {
         moveDirection.set(
-            data.vector.x,
-            -data.vector.y
+            -data.vector.x, // Flip X
+            -data.vector.y  // Flip Y
         );
 
         if (!isMoving) {
@@ -158,52 +152,56 @@ function updateMovement(delta) {
     cameraForward.normalize();
 
     const cameraRight = new THREE.Vector3();
-    cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward);
+    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)).normalize();
 
     const moveX = moveDirection.x * moveSpeed * delta;
     const moveZ = moveDirection.y * moveSpeed * delta;
 
-    const direction = new THREE.Vector3();
-    direction.copy(cameraRight).multiplyScalar(moveX).add(cameraForward.clone().multiplyScalar(moveZ));
+    const moveVector = new THREE.Vector3();
+    moveVector.addScaledVector(cameraRight, moveX);
+    moveVector.addScaledVector(cameraForward, moveZ);
 
-    const nextPosition = monk.position.clone().add(direction);
-    const raycaster = new THREE.Raycaster(monk.position, direction.clone().normalize(), 0, 1);
-    const collisions = raycaster.intersectObject(skycastleModel, true);
+    const prevPosition = monk.position.clone();
+    monk.position.add(moveVector);
 
-    if (collisions.length === 0) {
-        monk.position.copy(nextPosition);
+    // Wall collision
+    const forwardRay = new THREE.Raycaster(
+        monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)),
+        moveVector.clone().normalize()
+    );
+    const wallHits = forwardRay.intersectObject(skycastleModel, true);
+    if (wallHits.length > 0 && wallHits[0].distance < 1.0) {
+        monk.position.copy(prevPosition);
     }
 
+    // Rotate monk
     if (moveDirection.length() > 0.3) {
-        const moveAngle = Math.atan2(
-            direction.x,
-            direction.z
-        );
-        monk.rotation.y = moveAngle;
+        monk.rotation.y = Math.atan2(moveVector.x, moveVector.z);
     }
 }
 
 function checkTerrainCollision() {
     if (!monk || !skycastleModel) return true;
 
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
+    const downRay = new THREE.Raycaster(
+        monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)),
+        new THREE.Vector3(0, -1, 0)
+    );
+    const groundHits = downRay.intersectObject(skycastleModel, true);
 
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    if (intersects.length > 0) {
-        const groundY = intersects[0].point.y;
-        if (monk.position.y > groundY + monkHeight / 2) {
+    if (groundHits.length > 0) {
+        const groundY = groundHits[0].point.y;
+        if (monk.position.y > groundY + monkHeight / 2 + groundOffset) {
             velocityY += gravity * clock.getDelta();
+            monk.position.y += velocityY * clock.getDelta();
         } else {
             velocityY = 0;
             monk.position.y = groundY + monkHeight / 2 + groundOffset;
         }
     } else {
         velocityY += gravity * clock.getDelta();
+        monk.position.y += velocityY * clock.getDelta();
     }
-
-    monk.position.y += velocityY * clock.getDelta();
-    return intersects.length > 0;
 }
 
 function updateCamera() {
@@ -239,4 +237,4 @@ window.addEventListener('resize', () => {
 });
 
 init();
-    
+                                           
