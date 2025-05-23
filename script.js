@@ -24,7 +24,7 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 16;
+const moveSpeed =24;
 let isMoving = false;
 
 // Initialize monk at specific position
@@ -103,7 +103,7 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(2); // Speed up animation
+    runAction.setEffectiveTimeScale(8); // Speed up animation
 
     idleAction.play();
     currentAction = idleAction;
