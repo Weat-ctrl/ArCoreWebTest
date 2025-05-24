@@ -20,17 +20,19 @@ let velocityY = 0;
 const monkHeight = 2;
 const groundOffset = 0.1;
 const raycastDistance = 10;
-const edgeLookahead = 0.5;
-const collisionPrecision = 0.5; // How often to check collisions (in seconds)
+const stepHeight = 0.5; // Maximum height the monk can step up
+const edgeLookahead = 0.8;
+const collisionPrecision = 0.1;
 let collisionCheckTimer = 0;
 
 // Character
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 8;
+const moveSpeed = 2;
 let isMoving = false;
 let isGrounded = false;
+let lastValidPosition = new THREE.Vector3();
 
 // Initialize monk at specific position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
@@ -62,7 +64,7 @@ async function init() {
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         
-        // IMPORTANT: Enable all children to receive shadows
+        // Enable all children to receive shadows
         skycastleModel.traverse(child => {
             if (child.isMesh) {
                 child.receiveShadow = true;
@@ -79,6 +81,7 @@ async function init() {
 
         monk.position.copy(initialMonkPosition);
         snapToGround();
+        lastValidPosition.copy(monk.position);
 
         setupAnimations(monkGLTF);
         setupJoystick();
@@ -93,13 +96,12 @@ async function init() {
 function snapToGround() {
     if (!monk || !skycastleModel) return;
 
-    // Use multiple rays for better detection
     const rayOrigins = [
         new THREE.Vector3(0, 2, 0),    // Center
-        new THREE.Vector3(0.5, 2, 0),   // Right
-        new THREE.Vector3(-0.5, 2, 0),  // Left
-        new THREE.Vector3(0, 2, 0.5),   // Front
-        new THREE.Vector3(0, 2, -0.5)   // Back
+        new THREE.Vector3(0.5, 2, 0),  // Right
+        new THREE.Vector3(-0.5, 2, 0), // Left
+        new THREE.Vector3(0, 2, 0.5),  // Front
+        new THREE.Vector3(0, 2, -0.5)  // Back
     ];
 
     let lowestPoint = Infinity;
@@ -122,6 +124,7 @@ function snapToGround() {
         monk.position.y = lowestPoint + monkHeight / 2 + groundOffset;
         isGrounded = true;
         velocityY = 0;
+        lastValidPosition.copy(monk.position);
     }
 }
 
@@ -182,7 +185,6 @@ function setupResetButton() {
 function checkGround() {
     if (!monk || !skycastleModel) return false;
 
-    // Use multiple rays for better ground detection
     const rayOrigins = [
         new THREE.Vector3(0, monkHeight/2, 0),    // Center
         new THREE.Vector3(0.3, monkHeight/2, 0),  // Right
@@ -211,9 +213,12 @@ function checkGround() {
         const groundY = lowestPoint;
         const distanceToGround = monk.position.y - (groundY + monkHeight/2 + groundOffset);
         
-        if (distanceToGround < 0.5 && distanceToGround > -0.5) {
+        // If we're within step height, step up
+        if (distanceToGround < stepHeight && distanceToGround > -0.1) {
             monk.position.y = groundY + monkHeight/2 + groundOffset;
             isGrounded = true;
+            velocityY = 0;
+            lastValidPosition.copy(monk.position);
             return true;
         }
     }
@@ -222,10 +227,9 @@ function checkGround() {
     return false;
 }
 
-function checkEdge() {
-    if (!monk || !skycastleModel || moveDirection.length() === 0) return true;
+function checkEdgeAhead() {
+    if (!monk || !skycastleModel || moveDirection.length() === 0) return false;
 
-    // Check multiple points ahead for better edge detection
     const moveDirection3D = new THREE.Vector3(moveDirection.x, 0, -moveDirection.y).normalize();
     const rayOffsets = [
         new THREE.Vector3(0, 0, 0),           // Center
@@ -235,7 +239,7 @@ function checkEdge() {
         new THREE.Vector3(0, 0, -0.3)         // Back
     ];
 
-    let allClear = true;
+    let edgeFound = false;
 
     rayOffsets.forEach(offset => {
         const rayStart = monk.position.clone()
@@ -249,17 +253,16 @@ function checkEdge() {
 
         const intersects = raycaster.intersectObject(skycastleModel, true);
         if (intersects.length === 0) {
-            allClear = false;
+            edgeFound = true;
         }
     });
 
-    return allClear;
+    return edgeFound;
 }
 
 function updateMovement(delta) {
     if (!monk) return;
 
-    // More frequent collision checks when moving fast
     collisionCheckTimer += delta;
     if (collisionCheckTimer >= collisionPrecision) {
         checkGround();
@@ -270,10 +273,10 @@ function updateMovement(delta) {
     if (!isGrounded) {
         velocityY += gravity * delta;
     } else {
-        velocityY = Math.max(velocityY, 0); // Prevent sticking to ceiling
+        velocityY = Math.max(velocityY, 0);
     }
 
-    // Movement only allowed when grounded or controlled falling
+    // Movement logic
     if (isGrounded || velocityY < 0) {
         if (moveDirection.length() > 0) {
             const cameraForward = new THREE.Vector3();
@@ -287,18 +290,30 @@ function updateMovement(delta) {
             const moveX = moveDirection.x * moveSpeed * delta;
             const moveZ = -moveDirection.y * moveSpeed * delta;
 
-            // Save previous position for collision recovery
             const prevPosition = monk.position.clone();
 
-            // Apply movement
-            monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
-            monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+            // Check for edge ahead before moving
+            const edgeAhead = checkEdgeAhead();
+            
+            if (!edgeAhead) {
+                monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
+                monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+            }
 
             // Verify we didn't move through geometry
             if (collisionCheckTimer === 0) {
                 if (!checkGround()) {
                     // Revert movement if we fell through
                     monk.position.copy(prevPosition);
+                    if (!isGrounded) {
+                        // If we're falling, restore last valid position
+                        monk.position.copy(lastValidPosition);
+                        velocityY = 0;
+                        isGrounded = true;
+                    }
+                } else {
+                    // Update last valid position if movement was successful
+                    lastValidPosition.copy(monk.position);
                 }
             }
 
@@ -317,8 +332,9 @@ function updateMovement(delta) {
 
     // Final ground check to prevent falling through
     if (collisionCheckTimer === 0 && !checkGround() && isGrounded) {
-        // Emergency snap to ground if we detect falling through
-        snapToGround();
+        monk.position.copy(lastValidPosition);
+        velocityY = 0;
+        isGrounded = true;
     }
 }
 
@@ -339,7 +355,7 @@ function updateCamera() {
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = Math.min(clock.getDelta(), 0.1); // Cap delta to prevent physics issues
+    const delta = Math.min(clock.getDelta(), 0.1);
 
     if (mixer) mixer.update(delta);
     updateMovement(delta);
