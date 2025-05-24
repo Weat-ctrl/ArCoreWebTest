@@ -15,18 +15,20 @@ container.appendChild(renderer.domElement);
 
 // Physics
 const clock = new THREE.Clock();
-const gravity = -30; // Increased gravity for faster falling
+const gravity = -30;
 let velocityY = 0;
 const monkHeight = 2;
 const groundOffset = 0.1;
-const raycastDistance = 5; // How far to check for ground below
-const edgeLookahead = 0.8; // How far ahead to check for edges
+const raycastDistance = 10;
+const edgeLookahead = 0.5;
+const collisionPrecision = 0.5; // How often to check collisions (in seconds)
+let collisionCheckTimer = 0;
 
 // Character
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 24;
+const moveSpeed = 8;
 let isMoving = false;
 let isGrounded = false;
 
@@ -59,6 +61,15 @@ async function init() {
     try {
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
+        
+        // IMPORTANT: Enable all children to receive shadows
+        skycastleModel.traverse(child => {
+            if (child.isMesh) {
+                child.receiveShadow = true;
+                child.castShadow = true;
+            }
+        });
+        
         scene.add(skycastleModel);
 
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
@@ -82,13 +93,35 @@ async function init() {
 function snapToGround() {
     if (!monk || !skycastleModel) return;
 
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 10, 0)), new THREE.Vector3(0, -1, 0));
+    // Use multiple rays for better detection
+    const rayOrigins = [
+        new THREE.Vector3(0, 2, 0),    // Center
+        new THREE.Vector3(0.5, 2, 0),   // Right
+        new THREE.Vector3(-0.5, 2, 0),  // Left
+        new THREE.Vector3(0, 2, 0.5),   // Front
+        new THREE.Vector3(0, 2, -0.5)   // Back
+    ];
 
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    if (intersects.length > 0) {
-        monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
+    let lowestPoint = Infinity;
+    let foundGround = false;
+
+    rayOrigins.forEach(offset => {
+        const raycaster = new THREE.Raycaster();
+        const origin = monk.position.clone().add(offset);
+        raycaster.set(origin, new THREE.Vector3(0, -1, 0));
+        raycaster.far = raycastDistance;
+
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        if (intersects.length > 0) {
+            foundGround = true;
+            lowestPoint = Math.min(lowestPoint, intersects[0].point.y);
+        }
+    });
+
+    if (foundGround) {
+        monk.position.y = lowestPoint + monkHeight / 2 + groundOffset;
         isGrounded = true;
+        velocityY = 0;
     }
 }
 
@@ -107,8 +140,7 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(8); // Speed up animation
-
+    runAction.setEffectiveTimeScale(8);
     idleAction.play();
     currentAction = idleAction;
 }
@@ -123,7 +155,7 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        moveDirection.set(data.vector.x, -data.vector.y); // Invert Y to fix forward
+        moveDirection.set(data.vector.x, -data.vector.y);
         if (!isMoving) {
             idleAction?.fadeOut(0.2);
             runAction?.reset().fadeIn(0.2).play();
@@ -150,20 +182,37 @@ function setupResetButton() {
 function checkGround() {
     if (!monk || !skycastleModel) return false;
 
-    // Raycast straight down to check if we're grounded
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
-    raycaster.far = raycastDistance;
+    // Use multiple rays for better ground detection
+    const rayOrigins = [
+        new THREE.Vector3(0, monkHeight/2, 0),    // Center
+        new THREE.Vector3(0.3, monkHeight/2, 0),  // Right
+        new THREE.Vector3(-0.3, monkHeight/2, 0), // Left
+        new THREE.Vector3(0, monkHeight/2, 0.3),  // Front
+        new THREE.Vector3(0, monkHeight/2, -0.3)  // Back
+    ];
 
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    
-    if (intersects.length > 0) {
-        const groundY = intersects[0].point.y;
-        const distanceToGround = monk.position.y - (groundY + monkHeight / 2 + groundOffset);
+    let lowestPoint = Infinity;
+    let foundGround = false;
+
+    rayOrigins.forEach(offset => {
+        const raycaster = new THREE.Raycaster();
+        const origin = monk.position.clone().add(offset);
+        raycaster.set(origin, new THREE.Vector3(0, -1, 0));
+        raycaster.far = raycastDistance;
+
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        if (intersects.length > 0) {
+            foundGround = true;
+            lowestPoint = Math.min(lowestPoint, intersects[0].point.y);
+        }
+    });
+
+    if (foundGround) {
+        const groundY = lowestPoint;
+        const distanceToGround = monk.position.y - (groundY + monkHeight/2 + groundOffset);
         
-        // If we're very close to the ground, snap to it
-        if (distanceToGround < 0.1 && distanceToGround > -0.1) {
-            monk.position.y = groundY + monkHeight / 2 + groundOffset;
+        if (distanceToGround < 0.5 && distanceToGround > -0.5) {
+            monk.position.y = groundY + monkHeight/2 + groundOffset;
             isGrounded = true;
             return true;
         }
@@ -176,29 +225,55 @@ function checkGround() {
 function checkEdge() {
     if (!monk || !skycastleModel || moveDirection.length() === 0) return true;
 
-    // Check in the movement direction for ground
+    // Check multiple points ahead for better edge detection
     const moveDirection3D = new THREE.Vector3(moveDirection.x, 0, -moveDirection.y).normalize();
-    const rayStart = monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)).add(moveDirection3D.clone().multiplyScalar(edgeLookahead));
-    
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(rayStart, new THREE.Vector3(0, -1, 0));
-    raycaster.far = raycastDistance;
+    const rayOffsets = [
+        new THREE.Vector3(0, 0, 0),           // Center
+        new THREE.Vector3(0.3, 0, 0),         // Right
+        new THREE.Vector3(-0.3, 0, 0),        // Left
+        new THREE.Vector3(0, 0, 0.3),         // Front
+        new THREE.Vector3(0, 0, -0.3)         // Back
+    ];
 
-    const intersects = raycaster.intersectObject(skycastleModel, true);
-    return intersects.length > 0;
+    let allClear = true;
+
+    rayOffsets.forEach(offset => {
+        const rayStart = monk.position.clone()
+            .add(new THREE.Vector3(0, monkHeight/2, 0))
+            .add(moveDirection3D.clone().multiplyScalar(edgeLookahead))
+            .add(offset);
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(rayStart, new THREE.Vector3(0, -1, 0));
+        raycaster.far = raycastDistance;
+
+        const intersects = raycaster.intersectObject(skycastleModel, true);
+        if (intersects.length === 0) {
+            allClear = false;
+        }
+    });
+
+    return allClear;
 }
 
 function updateMovement(delta) {
     if (!monk) return;
 
-    // Apply gravity
-    if (!checkGround()) {
-        velocityY += gravity * delta;
-    } else {
-        velocityY = 0;
+    // More frequent collision checks when moving fast
+    collisionCheckTimer += delta;
+    if (collisionCheckTimer >= collisionPrecision) {
+        checkGround();
+        collisionCheckTimer = 0;
     }
 
-    // Only allow movement if grounded or if we're already falling
+    // Apply gravity
+    if (!isGrounded) {
+        velocityY += gravity * delta;
+    } else {
+        velocityY = Math.max(velocityY, 0); // Prevent sticking to ceiling
+    }
+
+    // Movement only allowed when grounded or controlled falling
     if (isGrounded || velocityY < 0) {
         if (moveDirection.length() > 0) {
             const cameraForward = new THREE.Vector3();
@@ -212,10 +287,19 @@ function updateMovement(delta) {
             const moveX = moveDirection.x * moveSpeed * delta;
             const moveZ = -moveDirection.y * moveSpeed * delta;
 
-            // Only move if there's ground ahead or we're already in the air
-            if (checkEdge() || !isGrounded) {
-                monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
-                monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+            // Save previous position for collision recovery
+            const prevPosition = monk.position.clone();
+
+            // Apply movement
+            monk.position.x += cameraRight.x * moveX + cameraForward.x * moveZ;
+            monk.position.z += cameraRight.z * moveX + cameraForward.z * moveZ;
+
+            // Verify we didn't move through geometry
+            if (collisionCheckTimer === 0) {
+                if (!checkGround()) {
+                    // Revert movement if we fell through
+                    monk.position.copy(prevPosition);
+                }
             }
 
             if (moveDirection.length() > 0.3) {
@@ -230,6 +314,12 @@ function updateMovement(delta) {
 
     // Apply vertical movement
     monk.position.y += velocityY * delta;
+
+    // Final ground check to prevent falling through
+    if (collisionCheckTimer === 0 && !checkGround() && isGrounded) {
+        // Emergency snap to ground if we detect falling through
+        snapToGround();
+    }
 }
 
 function updateCamera() {
@@ -249,7 +339,7 @@ function updateCamera() {
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = clock.getDelta();
+    const delta = Math.min(clock.getDelta(), 0.1); // Cap delta to prevent physics issues
 
     if (mixer) mixer.update(delta);
     updateMovement(delta);
