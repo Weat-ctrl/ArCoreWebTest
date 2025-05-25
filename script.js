@@ -29,7 +29,7 @@ let collisionCheckTimer = 0;
 let monk, skycastleModel;
 let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 2;
+const moveSpeed = 8;
 let isMoving = false;
 let isGrounded = false;
 let lastValidPosition = new THREE.Vector3();
