@@ -105,7 +105,7 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(8);
+    runAction.setEffectiveTimeScale(2);
     idleAction.play();
     currentAction = idleAction;
 }
