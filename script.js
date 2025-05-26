@@ -24,7 +24,7 @@ const groundOffset = 0.1;
 let monk, skycastleModel;
 let mixer, idleAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 2;
+const moveSpeed = 8;
 let isMoving = false;
 
 // Initial Position
