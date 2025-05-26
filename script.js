@@ -15,7 +15,7 @@ container.appendChild(renderer.domElement);
 
 // Physics
 const clock = new THREE.Clock();
-const gravity = -15; // Moderate gravity
+const gravity = -15;
 let velocityY = 0;
 const monkHeight = 2;
 const groundOffset = 0.1;
@@ -81,7 +81,7 @@ function snapToGround() {
 
     const raycaster = new THREE.Raycaster();
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 5, 0)), new THREE.Vector3(0, -1, 0));
-    raycaster.far = 20; // Long distance raycast
+    raycaster.far = 20;
 
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
@@ -105,7 +105,7 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(2);
+    runAction.setEffectiveTimeScale(4);
     idleAction.play();
     currentAction = idleAction;
 }
@@ -183,16 +183,16 @@ function checkGround() {
     if (!wasGrounded) {
         velocityY += gravity * clock.getDelta();
         monk.position.y += velocityY * clock.getDelta();
+        
+        // Simple fix: Snap to ground if falling for more than 0.3 seconds
+        if (velocityY < -4) { // -4 is a good threshold for noticeable falling
+            snapToGround();
+        }
     } else {
         if (velocityY < 0) {
             monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
         }
         velocityY = 0;
-    }
-
-    // Emergency snap if falling too fast
-    if (velocityY < -20) {
-        snapToGround();
     }
 
     return wasGrounded;
@@ -219,7 +219,7 @@ function animate() {
 
     if (mixer) mixer.update(delta);
     updateMovement(delta);
-    checkGround(); // Simple ground check
+    checkGround();
     updateCamera();
     renderer.render(scene, camera);
 }
