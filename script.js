@@ -105,7 +105,7 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(4);
+    runAction.setEffectiveTimeScale(2);
     idleAction.play();
     currentAction = idleAction;
 }
@@ -185,7 +185,7 @@ function checkGround() {
         monk.position.y += velocityY * clock.getDelta();
         
         // Simple fix: Snap to ground if falling for more than 0.3 seconds
-        if (velocityY < -4) { // -4 is a good threshold for noticeable falling
+        if (velocityY < -2) { // -4 is a good threshold for noticeable falling
             snapToGround();
         }
     } else {
