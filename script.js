@@ -22,15 +22,15 @@ const groundOffset = 0.1;
 
 // Character
 let monk, skycastleModel;
-let mixer, idleAction, runAction, currentAction;
+let mixer, idleAction, currentAction;
 const moveDirection = new THREE.Vector2();
-const moveSpeed = 4;
+const moveSpeed = 2;
 let isMoving = false;
 
-// Initialize monk at specific position
+// Initial Position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 
-// Simple model loader
+// Model Loader
 function loadModel(url) {
     return new Promise((resolve) => {
         const loader = new THREE.GLTFLoader();
@@ -62,14 +62,12 @@ async function init() {
         monk = monkGLTF.scene;
         scene.add(monk);
         monk.scale.set(0.5, 0.5, 0.5);
-
         monk.position.copy(initialMonkPosition);
         snapToGround();
 
         setupAnimations(monkGLTF);
         setupJoystick();
         setupResetButton();
-
         animate();
     } catch (error) {
         console.error("Initialization error:", error);
@@ -102,8 +100,9 @@ function setupAnimations(gltf) {
 
     mixer = new THREE.AnimationMixer(monk);
 
-    idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
-    runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
+    idleAction = mixer.clipAction(
+        gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
+    );
 
     idleAction.play();
     currentAction = idleAction;
@@ -121,21 +120,13 @@ function setupJoystick() {
     joystick.on('move', (evt, data) => {
         moveDirection.set(data.vector.x, -data.vector.y);
         if (!isMoving) {
-            idleAction?.fadeOut(0.2);
-            runAction?.reset().fadeIn(0.2).play();
-            currentAction = runAction;
             isMoving = true;
         }
     });
 
     joystick.on('end', () => {
         moveDirection.set(0, 0);
-        if (isMoving) {
-            runAction?.fadeOut(0.2);
-            idleAction?.reset().fadeIn(0.2).play();
-            currentAction = idleAction;
-            isMoving = false;
-        }
+        isMoving = false;
     });
 }
 
@@ -170,29 +161,32 @@ function updateMovement(delta) {
 }
 
 function checkGround() {
-    if (!monk || !skycastleModel) return;
+    if (!monk || !skycastleModel) return false;
 
     const raycaster = new THREE.Raycaster();
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
     raycaster.far = 10;
 
     const intersects = raycaster.intersectObject(skycastleModel, true);
+    const wasGrounded = intersects.length > 0;
+
     const delta = clock.getDelta();
 
-    if (intersects.length > 0) {
-        const groundY = intersects[0].point.y + monkHeight / 2 + groundOffset;
-
-        if (monk.position.y > groundY + 0.1) {
-            velocityY += gravity * delta;
-            monk.position.y += velocityY * delta;
-        } else {
-            monk.position.y = groundY;
-            velocityY = 0;
-        }
-    } else {
+    if (!wasGrounded) {
         velocityY += gravity * delta;
         monk.position.y += velocityY * delta;
+
+        if (velocityY < -2) {
+            snapToGround();
+        }
+    } else {
+        if (velocityY < 0) {
+            monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
+        }
+        velocityY = 0;
     }
+
+    return wasGrounded;
 }
 
 function updateCamera() {
@@ -214,7 +208,7 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
 
-    if (mixer) mixer.update(delta);
+    if (mixer) mixer.update(1 / 60); // Fixed animation update for consistent playback
     updateMovement(delta);
     checkGround();
     updateCamera();
