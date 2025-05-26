@@ -105,7 +105,6 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]);
 
-    runAction.setEffectiveTimeScale(2);
     idleAction.play();
     currentAction = idleAction;
 }
@@ -171,31 +170,29 @@ function updateMovement(delta) {
 }
 
 function checkGround() {
-    if (!monk || !skycastleModel) return false;
+    if (!monk || !skycastleModel) return;
 
     const raycaster = new THREE.Raycaster();
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
     raycaster.far = 10;
 
     const intersects = raycaster.intersectObject(skycastleModel, true);
-    const wasGrounded = intersects.length > 0;
+    const delta = clock.getDelta();
 
-    if (!wasGrounded) {
-        velocityY += gravity * clock.getDelta();
-        monk.position.y += velocityY * clock.getDelta();
-        
-        // Simple fix: Snap to ground if falling for more than 0.3 seconds
-        if (velocityY < -2) { // -4 is a good threshold for noticeable falling
-            snapToGround();
+    if (intersects.length > 0) {
+        const groundY = intersects[0].point.y + monkHeight / 2 + groundOffset;
+
+        if (monk.position.y > groundY + 0.1) {
+            velocityY += gravity * delta;
+            monk.position.y += velocityY * delta;
+        } else {
+            monk.position.y = groundY;
+            velocityY = 0;
         }
     } else {
-        if (velocityY < 0) {
-            monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
-        }
-        velocityY = 0;
+        velocityY += gravity * delta;
+        monk.position.y += velocityY * delta;
     }
-
-    return wasGrounded;
 }
 
 function updateCamera() {
