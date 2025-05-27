@@ -107,8 +107,8 @@ function setupAnimations(gltf) {
     runAction = mixer.clipAction(gltf.animations.find(a => /run/i.test(a.name)));
 
     // Set animation speeds
-    idleAction.timeScale = 1.0;
-    runAction.timeScale = 1.5;
+    idleAction.timeScale = 4.0;
+    runAction.timeScale = 4.5;
 
     idleAction.play();
     currentAction = idleAction;
