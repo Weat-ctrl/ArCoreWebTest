@@ -22,10 +22,10 @@ const groundOffset = 0.1;
 
 // Character
 let monk, skycastleModel;
-let mixer, idleAction, currentAction;
+let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
+const moveSpeed = 8;
 let isMoving = false;
-const moveSpeed = 6.5; // Tuned for sync with animation
 
 // Initial Position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
@@ -34,7 +34,12 @@ const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 function loadModel(url) {
     return new Promise((resolve) => {
         const loader = new THREE.GLTFLoader();
-        loader.load(url, resolve, undefined, () => resolve(createFallbackModel()));
+        loader.load(
+            url,
+            (gltf) => resolve(gltf),
+            undefined,
+            () => resolve(createFallbackModel())
+        );
     });
 }
 
@@ -55,12 +60,12 @@ async function init() {
 
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
+        scene.add(monk);
         monk.scale.set(0.5, 0.5, 0.5);
         monk.position.copy(initialMonkPosition);
-        scene.add(monk);
+        snapToGround();
 
         setupAnimations(monkGLTF);
-        snapToGround();
         setupJoystick();
         setupResetButton();
         animate();
@@ -72,12 +77,10 @@ async function init() {
 function snapToGround() {
     if (!monk || !skycastleModel) return;
 
-    const raycaster = new THREE.Raycaster(
-        monk.position.clone().add(new THREE.Vector3(0, 5, 0)),
-        new THREE.Vector3(0, -1, 0),
-        0,
-        20
-    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, 5, 0)), new THREE.Vector3(0, -1, 0));
+    raycaster.far = 20;
+
     const intersects = raycaster.intersectObject(skycastleModel, true);
     if (intersects.length > 0) {
         monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
@@ -96,11 +99,15 @@ function setupAnimations(gltf) {
     if (!gltf.animations?.length) return;
 
     mixer = new THREE.AnimationMixer(monk);
-    mixer.timeScale = 1.15; // Slightly faster playback
 
     idleAction = mixer.clipAction(
         gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
     );
+
+    runAction = mixer.clipAction(
+        gltf.animations.find(a => /run|walk/i.test(a.name)) || gltf.animations[1] || gltf.animations[0]
+    );
+
     idleAction.play();
     currentAction = idleAction;
 }
@@ -116,12 +123,20 @@ function setupJoystick() {
 
     joystick.on('move', (evt, data) => {
         moveDirection.set(data.vector.x, -data.vector.y);
-        if (!isMoving) isMoving = true;
+        if (!isMoving) {
+            isMoving = true;
+            idleAction?.fadeOut(0.2);
+            runAction?.reset().fadeIn(0.2).play();
+            currentAction = runAction;
+        }
     });
 
     joystick.on('end', () => {
         moveDirection.set(0, 0);
         isMoving = false;
+        runAction?.fadeOut(0.2);
+        idleAction?.reset().fadeIn(0.2).play();
+        currentAction = idleAction;
     });
 }
 
@@ -130,7 +145,7 @@ function setupResetButton() {
 }
 
 function updateMovement(delta) {
-    if (!monk || moveDirection.lengthSq() === 0) return;
+    if (!monk || moveDirection.length() === 0) return;
 
     const cameraForward = new THREE.Vector3();
     camera.getWorldDirection(cameraForward);
@@ -156,30 +171,26 @@ function updateMovement(delta) {
 }
 
 function checkGround(delta) {
-    if (!monk || !skycastleModel) return;
+    if (!monk || !skycastleModel) return false;
 
-    const raycaster = new THREE.Raycaster(
-        monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)),
-        new THREE.Vector3(0, -1, 0),
-        0,
-        10
-    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
+    raycaster.far = 10;
+
     const intersects = raycaster.intersectObject(skycastleModel, true);
-    const isGrounded = intersects.length > 0;
+    const wasGrounded = intersects.length > 0;
 
-    if (!isGrounded) {
+    if (!wasGrounded) {
         velocityY += gravity * delta;
         monk.position.y += velocityY * delta;
-
-        if (velocityY < -2 || (intersects[0] && monk.position.y < intersects[0].point.y)) {
-            snapToGround();
-        }
     } else {
         if (velocityY < 0) {
             monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
         }
         velocityY = 0;
     }
+
+    return wasGrounded;
 }
 
 function updateCamera() {
