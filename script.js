@@ -22,7 +22,7 @@ const groundOffset = 0.1;
 
 // Character
 let monk, skycastleModel;
-let mixer, idleAction, currentAction;
+let mixer, idleAction, runAction, currentAction;
 const moveDirection = new THREE.Vector2();
 const moveSpeed = 8;
 let isMoving = false;
@@ -100,12 +100,21 @@ function setupAnimations(gltf) {
 
     mixer = new THREE.AnimationMixer(monk);
 
-    idleAction = mixer.clipAction(
-        gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]
-    );
+    const idleClip = gltf.animations.find(a => /idle|stand/i.test(a.name));
+    const runClip = gltf.animations.find(a => /run/i.test(a.name));
+
+    idleAction = idleClip ? mixer.clipAction(idleClip) : mixer.clipAction(gltf.animations[0]);
+    runAction = runClip ? mixer.clipAction(runClip) : null;
 
     idleAction.play();
     currentAction = idleAction;
+}
+
+function fadeToAction(newAction) {
+    if (!newAction || currentAction === newAction) return;
+    currentAction.fadeOut(0.2);
+    newAction.reset().fadeIn(0.2).play();
+    currentAction = newAction;
 }
 
 function setupJoystick() {
@@ -208,10 +217,19 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
 
-    if (mixer) mixer.update(1 / 60); // Fixed animation update for consistent playback
+    if (mixer) mixer.update(delta);
     updateMovement(delta);
     checkGround();
     updateCamera();
+
+    if (runAction) {
+        if (isMoving) {
+            fadeToAction(runAction);
+        } else {
+            fadeToAction(idleAction);
+        }
+    }
+
     renderer.render(scene, camera);
 }
 
