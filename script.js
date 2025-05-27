@@ -244,4 +244,3 @@ window.addEventListener('resize', () => {
 });
 
 init();
-    
