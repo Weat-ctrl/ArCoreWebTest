@@ -37,23 +37,18 @@ body {
     font-size: 16px;
 }
 
-/* Hide the camera feed */
-video {
-    display: none;
-    visibility: hidden;
-    position: absolute;
-    width: 0;
-    height: 0;
-}
-
-/* Hand tracking indicator */
 #tracking-status {
     position: absolute;
     top: 20px;
     left: 20px;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.7);
     color: white;
-    padding: 10px;
-    border-radius: 5px;
+    padding: 10px 15px;
+    border-radius: 20px;
     z-index: 100;
+    font-size: 14px;
+}
+
+video {
+    display: none !important;
     }
