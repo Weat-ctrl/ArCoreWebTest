@@ -35,4 +35,25 @@ body {
     border: none;
     border-radius: 5px;
     font-size: 16px;
+}
+
+/* Hide the camera feed */
+video {
+    display: none;
+    visibility: hidden;
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
+/* Hand tracking indicator */
+#tracking-status {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 100;
     }
