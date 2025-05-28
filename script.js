@@ -30,8 +30,18 @@ let isMoving = false;
 // Initial Position
 const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 
-// Bounding Box
-const monkBox = new THREE.Box3();
+// Hand Tracking
+let handLandmarker;
+let handMeshes = [];
+const handMeshScale = 0.05;
+const handDepth = 0.5;
+let handsDetected = false;
+
+// Create a status indicator
+const trackingStatus = document.createElement('div');
+trackingStatus.id = 'tracking-status';
+trackingStatus.textContent = 'Searching for hands...';
+document.body.appendChild(trackingStatus);
 
 // Model Loader
 function loadModel(url) {
@@ -44,6 +54,14 @@ function loadModel(url) {
             () => resolve(createFallbackModel())
         );
     });
+}
+
+function createFallbackModel() {
+    const box = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    return { scene: box };
 }
 
 // Initialize
@@ -71,6 +89,7 @@ async function init() {
         setupAnimations(monkGLTF);
         setupJoystick();
         setupResetButton();
+        await setupHandTracking();
         animate();
     } catch (error) {
         console.error("Initialization error:", error);
@@ -106,7 +125,6 @@ function setupAnimations(gltf) {
     idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
     runAction = mixer.clipAction(gltf.animations.find(a => /run/i.test(a.name)));
 
-    // Set animation speeds
     idleAction.timeScale = 12.0;
     runAction.timeScale = 12.5;
 
@@ -140,6 +158,125 @@ function setupJoystick() {
 
 function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', resetMonkPosition);
+}
+
+async function setupHandTracking() {
+    handLandmarker = new Hands({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+    });
+    
+    handLandmarker.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.5
+    });
+    
+    handLandmarker.onResults(onHandResults);
+    
+    const camera = new Camera(document.getElementById('canvas-container'), {
+        onFrame: async () => {
+            await handLandmarker.send({image: camera.video});
+        },
+        width: 1280,
+        height: 720
+    });
+    camera.start();
+}
+
+function onHandResults(results) {
+    // Remove old hand meshes
+    handMeshes.forEach(mesh => scene.remove(mesh));
+    handMeshes = [];
+    
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        handsDetected = false;
+        trackingStatus.textContent = 'No hands detected';
+        trackingStatus.style.color = '#ff5555';
+        return;
+    }
+    
+    handsDetected = true;
+    trackingStatus.textContent = `${results.multiHandLandmarks.length} hand(s) detected`;
+    trackingStatus.style.color = '#55ff55';
+    
+    // Create hand landmarks
+    for (const landmarks of results.multiHandLandmarks) {
+        createHandLandmarks(landmarks);
+    }
+}
+
+function createHandLandmarks(landmarks) {
+    // Create joints
+    for (let i = 0; i < landmarks.length; i++) {
+        const landmark = landmarks[i];
+        
+        const geometry = new THREE.SphereGeometry(handMeshScale * 1.5, 16, 16);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.8
+        });
+        const sphere = new THREE.Mesh(geometry, material);
+        
+        // Position relative to camera
+        const x = (landmark.x - 0.5) * 2 * camera.aspect;
+        const y = -(landmark.y - 0.5) * 2;
+        const z = -handDepth;
+        
+        sphere.position.set(x, y, z);
+        sphere.position.applyMatrix4(camera.projectionMatrixInverse);
+        
+        scene.add(sphere);
+        handMeshes.push(sphere);
+    }
+    
+    // Create bones
+    const connections = [
+        [0, 1, 2, 3, 4],         // Thumb
+        [0, 5, 6, 7, 8],         // Index finger
+        [0, 9, 10, 11, 12],      // Middle finger
+        [0, 13, 14, 15, 16],     // Ring finger
+        [0, 17, 18, 19, 20],     // Pinky
+        [5, 9, 13, 17]            // Palm base
+    ];
+    
+    for (const connection of connections) {
+        for (let i = 0; i < connection.length - 1; i++) {
+            const startIdx = connection[i];
+            const endIdx = connection[i + 1];
+            
+            const start = landmarks[startIdx];
+            const end = landmarks[endIdx];
+            
+            const startX = (start.x - 0.5) * 2 * camera.aspect;
+            const startY = -(start.y - 0.5) * 2;
+            const startZ = -handDepth;
+            
+            const endX = (end.x - 0.5) * 2 * camera.aspect;
+            const endY = -(end.y - 0.5) * 2;
+            const endZ = -handDepth;
+            
+            const startVec = new THREE.Vector3(startX, startY, startZ)
+                .applyMatrix4(camera.projectionMatrixInverse);
+            const endVec = new THREE.Vector3(endX, endY, endZ)
+                .applyMatrix4(camera.projectionMatrixInverse);
+            
+            const geometry = new THREE.BufferGeometry().setFromPoints([startVec, endVec]);
+            const material = new THREE.LineBasicMaterial({ 
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.8,
+                linewidth: 2
+            });
+            const line = new THREE.Line(geometry, material);
+            
+            scene.add(line);
+            handMeshes.push(line);
+        }
+    }
 }
 
 function updateMovement(delta) {
@@ -248,4 +385,3 @@ window.addEventListener('resize', () => {
 });
 
 init();
-    
