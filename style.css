@@ -49,6 +49,7 @@ body {
     font-size: 14px;
 }
 
+/* You can still keep this, but the JS will also set display: none */
 video {
     display: none !important;
     }
