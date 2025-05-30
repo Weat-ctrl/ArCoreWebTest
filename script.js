@@ -5,7 +5,7 @@ scene.background = new THREE.Color(0xdddddd);
 
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const cameraOffset = new THREE.Vector3(0, 3, -8);
+const cameraOffset = new THREE.Vector3(0, 3, -8); // This is the offset for the *scene camera* from the monk
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -33,8 +33,16 @@ const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 // Hand Tracking
 let handLandmarker;
 let handMeshes = [];
-const handMeshScale = 0.05; // Size of the sphere for landmarks
-const handDepth = 0.5;      // Controls the perceived depth of the hands in the scene
+
+// *** Crucial adjustments for hand size and placement ***
+const HAND_JOINT_RADIUS = 0.005; // Very small spheres for joints
+const HAND_BONE_THICKNESS = 1;   // Line thickness (1px is most reliable)
+const HAND_DEPTH_SCALING_FACTOR = 10; // How much to scale MediaPipe's 'z' to fit your scene
+                                    // Larger value pushes hand further back.
+                                    // This is the key to making the hand appear smaller/further.
+const HAND_X_OFFSET = 0;           // Optional: slight horizontal adjustment for hands
+const HAND_Y_OFFSET = 0;           // Optional: slight vertical adjustment for hands
+
 let handsDetected = false;
 let videoElement; // Declare a variable for your video element
 
@@ -181,12 +189,7 @@ function setupJoystick() {
     });
 
     joystick.on('move', (evt, data) => {
-        // data.vector.x and data.vector.y are relative to the joystick's center.
-        // We want forward/backward and left/right movement.
-        // Assuming joystick's Y-axis maps to scene's Z (forward/backward)
-        // and joystick's X-axis maps to scene's X (left/right).
-        // Negating Y to match typical joystick "up is forward" to positive Z.
-        moveDirection.set(data.vector.x, data.vector.y); // Keep original y for rotation calculation later
+        moveDirection.set(data.vector.x, data.vector.y);
         isMoving = true;
 
         if (currentAction !== runAction && runAction) {
@@ -220,7 +223,7 @@ async function setupHandTracking() {
 
     handLandmarker.setOptions({
         maxNumHands: 2,
-        modelComplexity: 1, // 0 for lighter, 1 for heavier/more accurate
+        modelComplexity: 1,
         minDetectionConfidence: 0.7,
         minTrackingConfidence: 0.5
     });
@@ -277,12 +280,19 @@ function onHandResults(results) {
     }
 }
 
+// *** MODIFIED createHandLandmarks function for improved scaling and positioning ***
 function createHandLandmarks(landmarks) {
-    // Create joints
+    // Define a point to unproject against, giving the "distance" of the hand overlay
+    // This value essentially determines how far *behind* the camera the hand appears,
+    // thereby controlling its perceived size relative to the scene.
+    // A larger Z value here will make the hands appear smaller.
+    const referenceZ = -10; // Start far behind the camera for small hands
+
+    // Create joints (spheres)
     for (let i = 0; i < landmarks.length; i++) {
         const landmark = landmarks[i];
 
-        const geometry = new THREE.SphereGeometry(handMeshScale * 1.5, 16, 16);
+        const geometry = new THREE.SphereGeometry(HAND_JOINT_RADIUS, 8, 8); // Very small spheres
         const material = new THREE.MeshBasicMaterial({
             color: 0x00ff00,
             transparent: true,
@@ -296,12 +306,14 @@ function createHandLandmarks(landmarks) {
         const ndcX = (landmark.x - 0.5) * 2;
         const ndcY = -(landmark.y - 0.5) * 2; // Invert Y as Three.js Y is up, MediaPipe Y is down
 
-        // Use landmark.z for relative depth. It's typically [0, -1].
-        // Scale it to fit within your scene's depth perception.
-        // A smaller 'handDepth' value brings hands closer to the camera, larger pushes them back.
-        const ndcZ = landmark.z * handDepth; // landmark.z is usually negative for "away" from camera
+        // MediaPipe's 'z' is relative depth. We want to scale it and add it to our referenceZ
+        // to place the hands in the correct relative depth within the scene.
+        // A larger HAND_DEPTH_SCALING_FACTOR will mean less relative depth variation from MediaPipe's Z,
+        // making the hand appear flatter, but its overall distance controlled by referenceZ.
+        // If landmark.z is negative, `-landmark.z` will be positive.
+        const unprojectedZ = referenceZ + (-landmark.z * HAND_DEPTH_SCALING_FACTOR);
 
-        const vec = new THREE.Vector3(ndcX, ndcY, ndcZ);
+        const vec = new THREE.Vector3(ndcX + HAND_X_OFFSET, ndcY + HAND_Y_OFFSET, unprojectedZ);
         vec.unproject(camera); // Transform from NDC to world coordinates
 
         sphere.position.copy(vec);
@@ -317,7 +329,7 @@ function createHandLandmarks(landmarks) {
         [0, 9, 10, 11, 12],      // Middle finger
         [0, 13, 14, 15, 16],     // Ring finger
         [0, 17, 18, 19, 20],     // Pinky
-        [5, 9, 13, 17]            // Palm base
+        [5, 9, 13, 17]            // Palm base (Wrist to base of fingers)
     ];
 
     for (const connection of connections) {
@@ -328,17 +340,21 @@ function createHandLandmarks(landmarks) {
             const startLandmark = landmarks[startIdx];
             const endLandmark = landmarks[endIdx];
 
+            // Project start landmark
+            const startUnprojectedZ = referenceZ + (-startLandmark.z * HAND_DEPTH_SCALING_FACTOR);
             const startVec = new THREE.Vector3(
-                (startLandmark.x - 0.5) * 2,
-                -(startLandmark.y - 0.5) * 2,
-                startLandmark.z * handDepth
+                (startLandmark.x - 0.5) * 2 + HAND_X_OFFSET,
+                -(startLandmark.y - 0.5) * 2 + HAND_Y_OFFSET,
+                startUnprojectedZ
             );
             startVec.unproject(camera);
 
+            // Project end landmark
+            const endUnprojectedZ = referenceZ + (-endLandmark.z * HAND_DEPTH_SCALING_FACTOR);
             const endVec = new THREE.Vector3(
-                (endLandmark.x - 0.5) * 2,
-                -(endLandmark.y - 0.5) * 2,
-                endLandmark.z * handDepth
+                (endLandmark.x - 0.5) * 2 + HAND_X_OFFSET,
+                -(endLandmark.y - 0.5) * 2 + HAND_Y_OFFSET,
+                endUnprojectedZ
             );
             endVec.unproject(camera);
 
@@ -347,8 +363,7 @@ function createHandLandmarks(landmarks) {
                 color: 0x00ff00,
                 transparent: true,
                 opacity: 0.8,
-                linewidth: 2, // Note: linewidth is generally not supported well across all WebGL implementations.
-                              // For consistent thick lines, consider using TubeGeometry or custom shaders.
+                linewidth: HAND_BONE_THICKNESS, // Keep linewidth at 1 for consistent cross-browser thin lines
                 depthTest: false // Render on top of existing scene
             });
             const line = new THREE.Line(geometry, material);
@@ -360,47 +375,41 @@ function createHandLandmarks(landmarks) {
 }
 
 function updateMovement(delta) {
-    if (!monk || !isMoving) return; // Only move if joystick is active
+    if (!monk || !isMoving) return;
 
     const cameraForward = new THREE.Vector3();
     camera.getWorldDirection(cameraForward);
-    cameraForward.y = 0; // Keep movement on the horizontal plane
+    cameraForward.y = 0;
     cameraForward.normalize();
 
     const cameraRight = new THREE.Vector3();
-    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)); // Right vector
+    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0));
 
-    // Calculate movement based on joystick direction relative to camera
-    // moveDirection.x is left/right, moveDirection.y is up/down (forward/backward)
-    const moveZ = moveDirection.y * moveSpeed * delta; // Forward/Backward
-    const moveX = moveDirection.x * moveSpeed * delta; // Left/Right
+    const moveZ = moveDirection.y * moveSpeed * delta;
+    const moveX = moveDirection.x * moveSpeed * delta;
 
     const newPos = monk.position.clone();
     newPos.x += cameraForward.x * moveZ + cameraRight.x * moveX;
     newPos.z += cameraForward.z * moveZ + cameraRight.z * moveX;
 
-    // Check for collision with ground before moving
     const raycaster = new THREE.Raycaster();
     raycaster.set(newPos.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
-    raycaster.far = 5; // A bit further than monk height
+    raycaster.far = 5;
     const groundHits = raycaster.intersectObject(skycastleModel, true);
 
     if (groundHits.length > 0) {
         monk.position.copy(newPos);
 
-        // Calculate rotation based on movement direction
         const actualMoveVector = new THREE.Vector3(
             cameraForward.x * moveZ + cameraRight.x * moveX,
             0,
             cameraForward.z * moveZ + cameraRight.z * moveX
         );
 
-        if (actualMoveVector.lengthSq() > 0.01) { // Only rotate if there's significant movement
+        if (actualMoveVector.lengthSq() > 0.01) {
             const targetAngle = Math.atan2(actualMoveVector.x, actualMoveVector.z);
             monk.rotation.y = targetAngle;
         }
-
-        // Animation transition handled by joystick 'move' and 'end' events
     }
 }
 
@@ -408,9 +417,8 @@ function checkGround() {
     if (!monk || !skycastleModel) return false;
 
     const raycaster = new THREE.Raycaster();
-    // Start ray from slightly above the monk's feet
     raycaster.set(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 2, 0)), new THREE.Vector3(0, -1, 0));
-    raycaster.far = 10; // Max distance to check for ground
+    raycaster.far = 10;
 
     const intersects = raycaster.intersectObject(skycastleModel, true);
     const wasGrounded = intersects.length > 0;
@@ -421,16 +429,14 @@ function checkGround() {
         velocityY += gravity * delta;
         monk.position.y += velocityY * delta;
 
-        // If falling too fast, try to snap to ground
-        if (velocityY < -5) { // Arbitrary threshold for "falling fast"
+        if (velocityY < -5) {
             snapToGround();
         }
     } else {
-        // If grounded, make sure the monk is exactly on the ground
-        if (velocityY < 0) { // Only if falling
+        if (velocityY < 0) {
             monk.position.y = intersects[0].point.y + monkHeight / 2 + groundOffset;
         }
-        velocityY = 0; // Reset vertical velocity
+        velocityY = 0;
     }
 
     return wasGrounded;
@@ -439,16 +445,11 @@ function checkGround() {
 function updateCamera() {
     if (!monk) return;
 
-    // Calculate desired camera position behind the monk
-    // The cameraOffset is relative to the monk's local space, so rotate it by monk's quaternion
     const relativeCameraOffset = cameraOffset.clone().applyQuaternion(monk.quaternion);
     const targetPosition = monk.position.clone().add(relativeCameraOffset);
 
-    // Smoothly move the camera to the target position
-    camera.position.lerp(targetPosition, 0.1); // Lerp factor controls smoothness
-
-    // Make the camera look at the monk's position
-    camera.lookAt(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 4, 0))); // Look slightly above the base
+    camera.position.lerp(targetPosition, 0.1);
+    camera.lookAt(monk.position.clone().add(new THREE.Vector3(0, monkHeight / 4, 0)));
 }
 
 function animate() {
