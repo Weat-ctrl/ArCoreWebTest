@@ -49,7 +49,20 @@ body {
     font-size: 14px;
 }
 
-/* You can still keep this, but the JS will also set display: none */
+#gesture-display {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Centers the element */
+    font-size: 8em; /* Large emoji */
+    color: rgba(255,255,255,0.7); /* Default white/grey */
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5); /* Pop out */
+    z-index: 102; /* Above everything else */
+    pointer-events: none; /* Don't block joystick or canvas interactions */
+    display: none; /* Hidden until loaded */
+    transition: color 0.1s ease-out; /* Smooth color change */
+}
+
 video {
-    display: none !important;
+    display: none !important; /* Keep video hidden */
     }
