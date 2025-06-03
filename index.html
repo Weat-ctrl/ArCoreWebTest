@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Character with Hand Tracking</title>
+    <title>3D Character with Gesture Recognition</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,11 +11,7 @@
     <div id="joystick-wrapper"></div>
     <button id="reset-btn">Reset Position</button>
     <div id="tracking-status">Initializing hand tracking...</div>
-
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <div id="gesture-display"></div> <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
@@ -24,4 +20,4 @@
 
     <script src="script.js"></script>
 </body>
-                                                                                           </html>
+        </html>
