@@ -245,7 +245,7 @@ async function setupGestureRecognizer() {
         vision,
         {
             baseOptions: {
-                modelAssetPath: "https://tasks.mediapipe.dev/gesture_recognizer.task"
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recogniser/gesture_recognizer/float16/1/gesture_recognizer.task"
             },
             runningMode: "VIDEO",
             numHands: 1 // Only recognize one hand for simplicity
