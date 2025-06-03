@@ -245,7 +245,7 @@ async function setupGestureRecognizer() {
         vision,
         {
             baseOptions: {
-                modelAssetPath: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/gesture_recognizer.task"
+                modelAssetPath: "https://tasks.mediapipe.dev/gesture_recognizer.task"
             },
             runningMode: "VIDEO",
             numHands: 1 // Only recognize one hand for simplicity
