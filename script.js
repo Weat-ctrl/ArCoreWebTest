@@ -43,9 +43,8 @@ let enableWebcam = false; // Flag to control webcam activation
 // Gesture Queue
 const gestureQueue = ['✊', '✋', '☝️', '👎', '👍', '✌️']; // Available gestures (emoji order matters)
 let currentGestureIndex = 0;
-let lastRecognizedGestureCategoryName = null; // Store the category name (e.g., "Closed_Fist")
-let lastGestureUpdateTime = 0;
-const GESTURE_COOLDOWN_MS = 500; // Time before same gesture can be re-recognized
+let lastGestureProcessedTime = 0; // Tracks when the *last* valid gesture was processed and moved to next
+const GESTURE_DEBOUNCE_MS = 1000; // Time to wait after a successful gesture before allowing *any* new gesture recognition
 const GESTURE_FLASH_DURATION_MS = 700; // How long the correct gesture stays green
 
 let lastAttackAnimation = null; // Re-introduced for alternation
@@ -338,61 +337,71 @@ function onGestureResults(results) {
     let detectedCategoryName = 'None';
 
     if (results.gestures.length > 0) {
-        detectedCategoryName = results.gestures[0][0].categoryName;
-        detectedEmoji = gestureEmojiMap[detectedCategoryName] || '';
+        // Ensure there's a recognized gesture and it has a category name
+        if (results.gestures[0] && results.gestures[0][0]) {
+             detectedCategoryName = results.gestures[0][0].categoryName;
+             detectedEmoji = gestureEmojiMap[detectedCategoryName] || '';
+        }
     }
 
     trackingStatus.textContent = `Tracking: ${detectedEmoji || '...'}`;
+    gestureDisplay.textContent = currentExpectedEmoji; // Always display the target gesture
 
-    // Check if the detected gesture matches the currently displayed target gesture
-    // AND if enough time has passed since the last successful recognition of *any* gesture
-    if (detectedEmoji === currentExpectedEmoji && (currentTime - lastGestureUpdateTime > GESTURE_COOLDOWN_MS)) {
-
-        // Additionally, ensure that we don't re-trigger the *same* gesture if it's continuously held.
-        // This means it must either be a NEW gesture, or the cooldown has passed for the PREVIOUSLY recognized gesture.
-        // (Note: `lastRecognizedGestureCategoryName` should only update on actual successful recognition or a deliberate "wrong" gesture indication.)
-        if (detectedCategoryName !== lastRecognizedGestureCategoryName || (currentTime - lastGestureUpdateTime > GESTURE_COOLDOWN_MS)) {
-
-            gestureDisplay.textContent = currentExpectedEmoji;
+    // Check if enough time has passed since the last successful gesture
+    if (currentTime - lastGestureProcessedTime < GESTURE_DEBOUNCE_MS) {
+        // If within debounce period, ignore new detections for progression, but still show wrong gesture
+        if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') {
+            gestureDisplay.style.color = 'red';
+        } else if (detectedEmoji === currentExpectedEmoji) {
+            // Keep it green if it's the right one and still debouncing
             gestureDisplay.style.color = 'green';
-            console.log(`Correct gesture '${detectedCategoryName}' (${detectedEmoji}) performed!`);
-
-            // *** Trigger Monk Attack (now properly alternating) ***
-            let nextAttackAction;
-            if (lastAttackAnimation === attack1Action) {
-                nextAttackAction = attack2Action;
-            } else {
-                nextAttackAction = attack1Action;
-            }
-            lastAttackAnimation = nextAttackAction; // Store which attack was just played
-
-            if (currentAction !== nextAttackAction && nextAttackAction) { // Ensure nextAttackAction is not null
-                 currentAction?.fadeOut(0.2);
-                 nextAttackAction.reset().fadeIn(0.2).play(); // Use .play() on the action
-                 currentAction = nextAttackAction;
-            }
-
-            lastRecognizedGestureCategoryName = detectedCategoryName; // Update only on successful match
-            lastGestureUpdateTime = currentTime;
-
-            setTimeout(() => {
-                currentGestureIndex = (currentGestureIndex + 1) % gestureQueue.length;
-                displayCurrentGesture();
-                // Color reset happens inside displayCurrentGesture()
-            }, GESTURE_FLASH_DURATION_MS);
-
+        } else {
+             // Revert to default if no hand or 'None' detected
+             gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
         }
-    } else if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') {
-        // Only flash red for explicitly wrong gestures, not for "None"
+        return; // Exit early if we are debouncing
+    }
+
+    // If we reach here, we are outside the debounce period, so we can process a new gesture for progression
+    if (detectedEmoji === currentExpectedEmoji) {
+        gestureDisplay.style.color = 'green';
+        console.log(`Correct gesture '${detectedCategoryName}' (${detectedEmoji}) performed!`);
+
+        // *** Trigger Monk Attack (now properly alternating) ***
+        let nextAttackAction;
+        if (lastAttackAnimation === attack1Action) {
+            nextAttackAction = attack2Action;
+        } else {
+            nextAttackAction = attack1Action;
+        }
+        lastAttackAnimation = nextAttackAction; // Store which attack was just played
+
+        if (currentAction !== nextAttackAction && nextAttackAction) { // Ensure nextAttackAction is not null
+            currentAction?.fadeOut(0.2);
+            nextAttackAction.reset().fadeIn(0.2).play(); // Use .play() on the action
+            currentAction = nextAttackAction;
+        }
+
+        lastGestureProcessedTime = currentTime; // Mark this time as when a successful gesture was processed
+
+        setTimeout(() => {
+            currentGestureIndex = (currentGestureIndex + 1) % gestureQueue.length;
+            displayCurrentGesture(); // Move to next gesture and reset color
+        }, GESTURE_FLASH_DURATION_MS);
+
+    } else if (detectedEmoji !== '' && detectedEmoji !== 'None') {
+        // Only flash red for explicitly wrong gestures, not for "None" or no hand detected
         gestureDisplay.style.color = 'red';
         setTimeout(() => {
-            gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
+            if (gestureDisplay.style.color === 'red') { // Only revert if still red
+                 gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
+            }
         }, 200);
-        // Important: Update these even on a wrong gesture to enforce cooldowns and prevent spam
-        lastRecognizedGestureCategoryName = detectedCategoryName;
-        lastGestureUpdateTime = currentTime;
+    } else {
+        // If no relevant gesture is detected (e.g., hand not visible, "None" gesture),
+        // ensure the display color is the default for the *target* gesture.
+        gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
     }
-    // If no hand or "None" gesture, don't change gestureDisplay content or color
 }
 
 
@@ -401,7 +410,6 @@ function displayCurrentGesture() {
     gestureDisplay.textContent = gestureQueue[currentGestureIndex];
     gestureDisplay.style.display = 'block'; // Ensure it's visible
     gestureDisplay.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color for the next gesture
-    lastRecognizedGestureCategoryName = null; // Reset this so the *next* expected gesture can be recognized immediately
 }
 
 
