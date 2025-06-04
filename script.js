@@ -7,7 +7,7 @@ scene.background = new THREE.Color(0x000000); // Black background for easier vis
 
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const cameraOffset = new THREE.Vector3(0, 3, -8); // This is the offset for the *scene camera* from the monk
+const cameraOffset = new THREE.Vector3(0, 3, -8);
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -24,8 +24,7 @@ const groundOffset = 0.1;
 
 // Character
 let monk, skycastleModel;
-// Removed attack1Action, attack2Action
-let mixer, idleAction, runAction, currentAction; // Simplified animation actions
+let mixer, idleAction, runAction, attack1Action, attack2Action, currentAction; // Now properly scoped
 const moveDirection = new THREE.Vector2();
 const moveSpeed = 20;
 let isMoving = false;
@@ -49,7 +48,7 @@ let lastGestureUpdateTime = 0;
 const GESTURE_COOLDOWN_MS = 500; // Time before same gesture can be re-recognized
 const GESTURE_FLASH_DURATION_MS = 700; // How long the correct gesture stays green
 
-// Removed lastAttackAnimation
+let lastAttackAnimation = null; // Re-introduced for alternation
 
 // Model Loader
 function loadModel(url) {
@@ -159,42 +158,60 @@ function resetMonkPosition() {
 function setupAnimations(gltf) {
     if (!gltf.animations?.length) {
         console.warn("No animations found in GLTF model.");
+        // If no animations, ensure mixer is still defined for safety, but actions might be null
+        mixer = new THREE.AnimationMixer(monk);
+        idleAction = null;
+        runAction = null;
+        attack1Action = null;
+        attack2Action = null;
+        currentAction = null;
         return;
     }
 
     mixer = new THREE.AnimationMixer(monk);
 
-    idleAction = mixer.clipAction(gltf.animations.find(a => /idle|stand/i.test(a.name)) || gltf.animations[0]);
-    runAction = mixer.clipAction(gltf.animations.find(a => /run/i.test(a.name)) || gltf.animations[0]);
+    // More robust way to find animations, using a fallback to the first animation if specific names aren't found
+    const findAnimation = (names, fallback) => {
+        for (const name of names) {
+            const action = gltf.animations.find(a => a.name.toLowerCase().includes(name.toLowerCase()));
+            if (action) return mixer.clipAction(action);
+        }
+        return fallback ? mixer.clipAction(fallback) : null;
+    };
 
-    // *** Keep references to Attack animations, but don't explicitly assign to currentAction yet ***
-    // We will alternate between these when a gesture is recognized.
-    attack1Action = mixer.clipAction(gltf.animations.find(a => /attack|Attack1|punch/i.test(a.name)) || gltf.animations[0]);
-    attack2Action = mixer.clipAction(gltf.animations.find(a => /attack2|kick|special/i.test(a.name)) || gltf.animations[0]);
+    idleAction = findAnimation(['idle', 'stand'], gltf.animations[0]);
+    runAction = findAnimation(['run', 'walk'], gltf.animations[0]); // Added 'walk' as a common alternative
+    // IMPORTANT: Use the exact names from your GLTF file if known, or common patterns
+    attack1Action = findAnimation(['attack', 'attack1', 'punch'], gltf.animations[0]); // Assuming 'Attack' as the primary attack
+    attack2Action = findAnimation(['attack2', 'kick', 'special'], gltf.animations[0]); // Assuming 'Attack2' as the secondary attack
 
-    // Ensure they exist, fallback if not
+    // Ensure they are not null, if no suitable animation was found, default to idleAction
+    if (!idleAction) {
+        console.warn("Idle animation not found, creating a dummy action.");
+        idleAction = mixer.clipAction(new THREE.AnimationClip('dummyIdle', 0, [])); // Create an empty clip
+        idleAction.play(); // Play dummy action to set currentAction
+    }
+    if (!runAction) {
+        console.warn("Run animation not found, falling back to Idle.");
+        runAction = idleAction;
+    }
     if (!attack1Action) {
-        console.warn("Attack1 animation not found. Falling back to idle.");
+        console.warn("Attack animation (Attack or Attack1) not found, falling back to Idle.");
         attack1Action = idleAction;
     }
     if (!attack2Action) {
-        console.warn("Attack2 animation not found. Falling back to idle.");
-        attack2Action = idleAction;
+        console.warn("Attack2 animation not found, falling back to Attack1.");
+        attack2Action = attack1Action; // Fallback to Attack1 if Attack2 isn't present
     }
 
-    if (idleAction) {
-        idleAction.play();
-        currentAction = idleAction;
-    } else {
-        console.warn("Idle animation not found, character may not animate.");
-    }
+    // Set initial action
+    idleAction.play();
+    currentAction = idleAction;
+    lastAttackAnimation = attack2Action; // Initialize to attack2 so the first attack is attack1
 
-    // Listener to return to idle after attack animations complete
+    // Listener to return to idle/run after attack animations complete
     mixer.addEventListener('finished', (e) => {
-        // *** Simplified animation return logic ***
-        if (e.action === attack1Action || e.action === attack2Action) {
-            // Only transition back to idle/run if the attack animation just finished and is still current.
-            // This prevents an attack animation from cutting off joystick movement if user starts moving during attack.
+        if ((e.action === attack1Action || e.action === attack2Action) && currentAction === e.action) {
             if (!isMoving) {
                 currentAction?.fadeOut(0.2);
                 idleAction?.reset().fadeIn(0.2).play();
@@ -221,7 +238,7 @@ function setupJoystick() {
         moveDirection.set(data.vector.x, data.vector.y);
         if (!isMoving) {
             isMoving = true;
-            if (currentAction !== runAction && runAction) {
+            if (currentAction !== runAction && runAction) { // Ensure runAction exists
                 currentAction?.fadeOut(0.2);
                 runAction?.reset().fadeIn(0.2).play();
                 currentAction = runAction;
@@ -232,7 +249,7 @@ function setupJoystick() {
     joystick.on('end', () => {
         moveDirection.set(0, 0);
         isMoving = false;
-        if (currentAction !== idleAction && idleAction) {
+        if (currentAction !== idleAction && idleAction) { // Ensure idleAction exists
             currentAction?.fadeOut(0.2);
             idleAction?.reset().fadeIn(0.2).play();
             currentAction = idleAction;
@@ -244,7 +261,7 @@ function setupResetButton() {
     document.getElementById('reset-btn').addEventListener('click', resetMonkPosition);
 }
 
-// *** NEW: Setup Gesture Recognizer ***
+// *** Setup Gesture Recognizer ***
 async function setupGestureRecognizer() {
     const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
@@ -253,7 +270,6 @@ async function setupGestureRecognizer() {
         vision,
         {
             baseOptions: {
-                // Pointing to GitHub Pages hosted .task file
                 modelAssetPath: "https://weat-ctrl.github.io/ArCoreWebTest/gesture_recognizer.task"
             },
             runningMode: "VIDEO",
@@ -287,7 +303,7 @@ async function setupGestureRecognizer() {
     }
 }
 
-// *** NEW: Gesture Recognition Loop ***
+// *** Gesture Recognition Loop ***
 let lastVideoTime = -1;
 async function recognizeGestures() {
     if (!gestureRecognizer || !enableWebcam || !videoElement.videoWidth) {
@@ -295,7 +311,6 @@ async function recognizeGestures() {
         return;
     }
 
-    // Only process if video frame has changed
     if (videoElement.currentTime !== lastVideoTime) {
         const results = gestureRecognizer.recognizeForVideo(videoElement, performance.now());
         onGestureResults(results);
@@ -305,7 +320,7 @@ async function recognizeGestures() {
     requestAnimationFrame(recognizeGestures);
 }
 
-// *** NEW: Process Gesture Results ***
+// *** Process Gesture Results ***
 const gestureEmojiMap = {
     "Closed_Fist": "✊",
     "Open_Palm": "✋",
@@ -313,7 +328,7 @@ const gestureEmojiMap = {
     "Thumb_Down": "👎",
     "Thumb_Up": "👍",
     "Victory": "✌️",
-    "None": "" // MediaPipe can return "None"
+    "None": ""
 };
 
 function onGestureResults(results) {
@@ -327,60 +342,55 @@ function onGestureResults(results) {
         detectedEmoji = gestureEmojiMap[detectedCategoryName] || '';
     }
 
-    // Update tracking status always to show what MP is seeing
-    trackingStatus.textContent = `Tracking: ${detectedEmoji || '...'}`; // Show emoji if detected, else "..."
+    trackingStatus.textContent = `Tracking: ${detectedEmoji || '...'}`;
 
     // Check if the detected gesture matches the currently displayed target gesture
-    // and if enough time has passed since the last successful recognition of *any* gesture
+    // AND if enough time has passed since the last successful recognition of *any* gesture
     if (detectedEmoji === currentExpectedEmoji && (currentTime - lastGestureUpdateTime > GESTURE_COOLDOWN_MS)) {
 
-        // Check if the exact same gesture (by category name) was just recognized.
-        // This handles cases where the user holds a gesture for too long, preventing multiple triggers.
-        // We only trigger if it's a new gesture or if cooldown is passed AND it's a different gesture.
-        // Or if it's the SAME gesture but the cooldown period has passed, allowing re-recognition.
+        // Additionally, ensure that we don't re-trigger the *same* gesture if it's continuously held.
+        // This means it must either be a NEW gesture, or the cooldown has passed for the PREVIOUSLY recognized gesture.
+        // (Note: `lastRecognizedGestureCategoryName` should only update on actual successful recognition or a deliberate "wrong" gesture indication.)
         if (detectedCategoryName !== lastRecognizedGestureCategoryName || (currentTime - lastGestureUpdateTime > GESTURE_COOLDOWN_MS)) {
 
-            gestureDisplay.textContent = currentExpectedEmoji; // Keep showing the target emoji
-            gestureDisplay.style.color = 'green'; // Change color to green
+            gestureDisplay.textContent = currentExpectedEmoji;
+            gestureDisplay.style.color = 'green';
             console.log(`Correct gesture '${detectedCategoryName}' (${detectedEmoji}) performed!`);
 
-            // *** Trigger Monk Attack (removed playMonkAttack function) ***
-            // Alternate attack animations
+            // *** Trigger Monk Attack (now properly alternating) ***
             let nextAttackAction;
-            if (currentAction === attack1Action) { // Assuming currentAction is either idle or run normally
+            if (lastAttackAnimation === attack1Action) {
                 nextAttackAction = attack2Action;
             } else {
                 nextAttackAction = attack1Action;
             }
+            lastAttackAnimation = nextAttackAction; // Store which attack was just played
 
-            // Play the chosen attack animation
-            if (currentAction !== nextAttackAction) {
+            if (currentAction !== nextAttackAction && nextAttackAction) { // Ensure nextAttackAction is not null
                  currentAction?.fadeOut(0.2);
-                 nextAttackAction?.reset().fadeIn(0.2).play();
-                 currentAction = nextAttackAction; // Set currentAction to the attack action
-                 // The mixer.addEventListener('finished') will handle returning to idle/run
+                 nextAttackAction.reset().fadeIn(0.2).play(); // Use .play() on the action
+                 currentAction = nextAttackAction;
             }
 
-            lastRecognizedGestureCategoryName = detectedCategoryName;
+            lastRecognizedGestureCategoryName = detectedCategoryName; // Update only on successful match
             lastGestureUpdateTime = currentTime;
 
-            // Move to next gesture in queue after a short delay for visual feedback
             setTimeout(() => {
                 currentGestureIndex = (currentGestureIndex + 1) % gestureQueue.length;
-                displayCurrentGesture(); // Update to show the NEXT gesture from the queue
-                gestureDisplay.style.color = 'rgba(255,255,255,0.7)'; // Reset color
+                displayCurrentGesture();
+                // Color reset happens inside displayCurrentGesture()
             }, GESTURE_FLASH_DURATION_MS);
 
         }
-    } else if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') { // If wrong gesture and not "None"
-        // Optional: If wrong gesture, briefly flash red or show a "X" emoji
+    } else if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') {
+        // Only flash red for explicitly wrong gestures, not for "None"
         gestureDisplay.style.color = 'red';
-        // console.log(`Wrong gesture: ${detectedCategoryName}. Expected: ${currentExpectedEmoji}`);
         setTimeout(() => {
             gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
         }, 200);
-        lastRecognizedGestureCategoryName = detectedCategoryName; // Update to prevent continuous red flashes for same wrong gesture
-        lastGestureUpdateTime = currentTime; // Update time to respect cooldown for wrong guesses too
+        // Important: Update these even on a wrong gesture to enforce cooldowns and prevent spam
+        lastRecognizedGestureCategoryName = detectedCategoryName;
+        lastGestureUpdateTime = currentTime;
     }
     // If no hand or "None" gesture, don't change gestureDisplay content or color
 }
@@ -390,8 +400,8 @@ function onGestureResults(results) {
 function displayCurrentGesture() {
     gestureDisplay.textContent = gestureQueue[currentGestureIndex];
     gestureDisplay.style.display = 'block'; // Ensure it's visible
-    gestureDisplay.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color
-    lastRecognizedGestureCategoryName = null; // Reset for new target gesture
+    gestureDisplay.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color for the next gesture
+    lastRecognizedGestureCategoryName = null; // Reset this so the *next* expected gesture can be recognized immediately
 }
 
 
