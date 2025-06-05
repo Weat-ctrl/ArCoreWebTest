@@ -10,10 +10,18 @@
     <div id="canvas-container"></div>
     <div id="joystick-wrapper"></div>
     <button id="reset-btn">Reset Position</button>
-    <div id="tracking-status">Initializing hand tracking...</div>
+    
+    <div id="hud-container">
+        <div id="tracking-status">Initializing hand tracking...</div>
+        <div id="gesture-display"></div>
+        <div id="health-bar-container" style="display: none;">
+            <div id="health-bar-fill"></div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/renderers/CSS2DRenderer.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
 
