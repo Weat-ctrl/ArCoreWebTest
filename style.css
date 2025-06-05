@@ -37,32 +37,70 @@ body {
     font-size: 16px;
 }
 
-#tracking-status {
+/* --- HUD Container Styles --- */
+#hud-container {
     position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Allows clicks to pass through to the canvas */
+    z-index: 101; /* Ensure it's above the 3D scene but below joystick/buttons if needed */
+    display: flex; /* Use flexbox for easy centering of gesture display */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Adjust styles for children of hud-container */
+#tracking-status {
+    position: absolute; /* Relative to #hud-container */
     top: 20px;
     left: 20px;
     background: rgba(0,0,0,0.7);
     color: white;
     padding: 10px 15px;
     border-radius: 20px;
-    z-index: 100;
     font-size: 14px;
+    pointer-events: auto; /* Allow interactions if needed, otherwise inherit from parent */
+    transform: none; /* Remove previous centering transform */
 }
 
 #gesture-display {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%); /* Centers the element */
+    /* Centered by #hud-container's flexbox */
     font-size: 8em; /* Large emoji */
     color: rgba(255,255,255,0.7); /* Default white/grey */
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5); /* Pop out */
-    z-index: 102; /* Above everything else */
-    pointer-events: none; /* Don't block joystick or canvas interactions */
-    display: none; /* Hidden until loaded */
+    pointer-events: auto; /* Allow interactions if needed, otherwise inherit from parent */
+    display: none; /* Hidden until loaded by JS */
     transition: color 0.1s ease-out; /* Smooth color change */
+    /* Remove absolute positioning and transform as flexbox handles it */
+    position: static; 
+    transform: none;
 }
+
+/* Example Health Bar Styles */
+#health-bar-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    height: 20px;
+    background-color: rgba(0,0,0,0.5);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none; /* Hidden initially */
+}
+
+#health-bar-fill {
+    height: 100%;
+    width: 100%; /* Start full */
+    background-color: #4CAF50; /* Green */
+    border-radius: 10px;
+    transition: width 0.3s ease-out;
+}
+
 
 video {
     display: none !important; /* Keep video hidden */
-    }
+}
