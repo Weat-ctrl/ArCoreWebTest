@@ -1,4 +1,6 @@
+
 import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
+import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'; // Correct import path
 
 // Scene Setup
 const container = document.getElementById('canvas-container');
@@ -14,6 +16,40 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
+
+// --- CSS2DRenderer Setup for HUD ---
+const css2dRenderer = new CSS2DRenderer();
+css2dRenderer.setSize(window.innerWidth, window.innerHeight);
+css2dRenderer.domElement.style.position = 'absolute';
+css2dRenderer.domElement.style.top = '0px';
+// IMPORTANT: Append to the specific HUD container, not directly to body
+document.getElementById('hud-container').appendChild(css2dRenderer.domElement);
+
+// Create a Three.js Object3D to hold all our CSS2DObjects
+const hud = new THREE.Object3D();
+scene.add(hud);
+
+// Get the actual HTML elements
+const trackingStatusElement = document.getElementById('tracking-status');
+const gestureDisplayElement = document.getElementById('gesture-display');
+const healthBarContainerElement = document.getElementById('health-bar-container');
+const healthBarFillElement = document.getElementById('health-bar-fill');
+
+// Create CSS2DObjects for the HTML elements
+const trackingStatus2D = new CSS2DObject(trackingStatusElement);
+trackingStatus2D.position.set(- (window.innerWidth / 2) + 120, (window.innerHeight / 2) - 50, 0); // Position top-left of screen
+hud.add(trackingStatus2D);
+
+const gestureDisplay2D = new CSS2DObject(gestureDisplayElement);
+gestureDisplay2D.position.set(0, 0, 0); // Position at the center of the HUD object (which is at origin)
+hud.add(gestureDisplay2D);
+
+const healthBar2D = new CSS2DObject(healthBarContainerElement);
+healthBar2D.position.set((window.innerWidth / 2) - 120, (window.innerHeight / 2) - 50, 0); // Position top-right
+hud.add(healthBar2D);
+
+// Example health variable (for later use)
+let playerHealth = 100;
 
 // Physics
 const clock = new THREE.Clock();
@@ -35,8 +71,6 @@ const initialMonkPosition = new THREE.Vector3(6.18, 29.792, 24.658);
 // Hand Tracking / Gesture Recognition
 let gestureRecognizer;
 let videoElement;
-const trackingStatus = document.getElementById('tracking-status');
-const gestureDisplay = document.getElementById('gesture-display');
 
 let enableWebcam = false; // Flag to control webcam activation
 
@@ -122,8 +156,8 @@ async function init() {
         animate();
     } catch (error) {
         console.error("Initialization error:", error);
-        trackingStatus.textContent = `Error initializing: ${error.message}`;
-        trackingStatus.style.color = '#ff0000';
+        trackingStatusElement.textContent = `Error initializing: ${error.message}`;
+        trackingStatusElement.style.color = '#ff0000';
     }
 }
 
@@ -288,17 +322,19 @@ async function setupGestureRecognizer() {
         videoElement.onloadedmetadata = () => {
             enableWebcam = true;
             console.log("Webcam loaded successfully.");
-            trackingStatus.textContent = 'Webcam active. Waiting for gesture...';
-            gestureDisplay.style.display = 'block'; // Show the gesture display container
+            trackingStatusElement.textContent = 'Webcam active. Waiting for gesture...'; // Update HTML element directly
+            gestureDisplayElement.style.display = 'block'; // Show the gesture display container
+            healthBarContainerElement.style.display = 'block'; // Show health bar
             displayCurrentGesture(); // Call this to show the first gesture
             videoElement.play();
             recognizeGestures(); // Start gesture recognition loop
         };
     } catch (err) {
         console.error("Error accessing camera:", err);
-        trackingStatus.textContent = 'Camera access denied or error!';
-        trackingStatus.style.color = '#ff0000';
-        gestureDisplay.style.display = 'none';
+        trackingStatusElement.textContent = 'Camera access denied or error!'; // Update HTML element directly
+        trackingStatusElement.style.color = '#ff0000';
+        gestureDisplayElement.style.display = 'none';
+        healthBarContainerElement.style.display = 'none';
     }
 }
 
@@ -344,27 +380,40 @@ function onGestureResults(results) {
         }
     }
 
-    trackingStatus.textContent = `Tracking: ${detectedEmoji || '...'}`;
-    gestureDisplay.textContent = currentExpectedEmoji; // Always display the target gesture
+    trackingStatusElement.textContent = `Tracking: ${detectedEmoji || '...'}`; // Update HTML element directly
+    gestureDisplayElement.textContent = currentExpectedEmoji; // Always display the target gesture
+
+    // Update health bar (example)
+    // For demonstration, let's say successful gestures heal, wrong gestures damage
+    // This is just an example, you'd integrate this with your game logic
+    if (detectedEmoji === currentExpectedEmoji && (currentTime - lastGestureProcessedTime >= GESTURE_DEBOUNCE_MS)) {
+        playerHealth = Math.min(100, playerHealth + 5); // Heal on correct gesture
+        updateHealthBar();
+    } else if (detectedEmoji !== '' && detectedEmoji !== 'None' && detectedEmoji !== currentExpectedEmoji && (currentTime - lastGestureProcessedTime >= GESTURE_DEBOUNCE_MS)) {
+        // Only damage on wrong gesture *if* we are ready for a new gesture (not debouncing from a previous success)
+        playerHealth = Math.max(0, playerHealth - 5); // Damage on wrong gesture
+        updateHealthBar();
+    }
+
 
     // Check if enough time has passed since the last successful gesture
     if (currentTime - lastGestureProcessedTime < GESTURE_DEBOUNCE_MS) {
         // If within debounce period, ignore new detections for progression, but still show wrong gesture
         if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') {
-            gestureDisplay.style.color = 'red';
+            gestureDisplayElement.style.color = 'red';
         } else if (detectedEmoji === currentExpectedEmoji) {
             // Keep it green if it's the right one and still debouncing
-            gestureDisplay.style.color = 'green';
+            gestureDisplayElement.style.color = 'green';
         } else {
              // Revert to default if no hand or 'None' detected
-             gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
+             gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
         }
         return; // Exit early if we are debouncing
     }
 
     // If we reach here, we are outside the debounce period, so we can process a new gesture for progression
     if (detectedEmoji === currentExpectedEmoji) {
-        gestureDisplay.style.color = 'green';
+        gestureDisplayElement.style.color = 'green';
         console.log(`Correct gesture '${detectedCategoryName}' (${detectedEmoji}) performed!`);
 
         // *** Trigger Monk Attack (now properly alternating) ***
@@ -391,27 +440,40 @@ function onGestureResults(results) {
 
     } else if (detectedEmoji !== '' && detectedEmoji !== 'None') {
         // Only flash red for explicitly wrong gestures, not for "None" or no hand detected
-        gestureDisplay.style.color = 'red';
+        gestureDisplayElement.style.color = 'red';
         setTimeout(() => {
-            if (gestureDisplay.style.color === 'red') { // Only revert if still red
-                 gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
+            if (gestureDisplayElement.style.color === 'red') { // Only revert if still red
+                 gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
             }
         }, 200);
     } else {
         // If no relevant gesture is detected (e.g., hand not visible, "None" gesture),
         // ensure the display color is the default for the *target* gesture.
-        gestureDisplay.style.color = 'rgba(255,255,255,0.7)';
+        gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
     }
 }
 
 
 // *** Function to display the currently targeted gesture from the queue ***
 function displayCurrentGesture() {
-    gestureDisplay.textContent = gestureQueue[currentGestureIndex];
-    gestureDisplay.style.display = 'block'; // Ensure it's visible
-    gestureDisplay.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color for the next gesture
+    gestureDisplayElement.textContent = gestureQueue[currentGestureIndex];
+    gestureDisplayElement.style.display = 'block'; // Ensure it's visible
+    gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color for the next gesture
 }
 
+// Function to update the health bar
+function updateHealthBar() {
+    healthBarFillElement.style.width = `${playerHealth}%`;
+    let color;
+    if (playerHealth > 70) {
+        color = '#4CAF50'; // Green
+    } else if (playerHealth > 30) {
+        color = '#FFC107'; // Yellow
+    } else {
+        color = '#F44336'; // Red
+    }
+    healthBarFillElement.style.backgroundColor = color;
+}
 
 function updateMovement(delta) {
     if (!monk || !isMoving) return;
@@ -500,12 +562,19 @@ function animate() {
     checkGround();
     updateCamera();
     renderer.render(scene, camera);
+    css2dRenderer.render(scene, camera); // Render the CSS2D content as well
 }
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    css2dRenderer.setSize(window.innerWidth, window.innerHeight); // Update CSS2DRenderer size
+    
+    // Adjust CSS2DObject positions on resize for responsiveness
+    trackingStatus2D.position.set(- (window.innerWidth / 2) + 120, (window.innerHeight / 2) - 50, 0);
+    healthBar2D.position.set((window.innerWidth / 2) - 120, (window.innerHeight / 2) - 50, 0);
+    // gestureDisplay2D remains centered (0,0,0) relative to its parent hud
 });
 
 init();
