@@ -1,6 +1,5 @@
-
 import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
-import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'; // Correct import path
+import { CSS2DRenderer, CSS2DObject } from "https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/renderers/CSS2DRenderer.js";
 
 // Scene Setup
 const container = document.getElementById('canvas-container');
