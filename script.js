@@ -1,5 +1,7 @@
-import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
-import { CSS2DRenderer, CSS2DObject } from "https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/renderers/CSS2DRenderer.js";
+import * as THREE from 'three'; // This will now resolve via importmap
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'; // This will now resolve via importmap
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // Ensure GLTFLoader is also imported this way if used
+import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"; // This is already a full CDN path, so it's fine.
 
 // Scene Setup
 const container = document.getElementById('canvas-container');
@@ -85,7 +87,7 @@ let lastAttackAnimation = null; // Re-introduced for alternation
 // Model Loader
 function loadModel(url) {
     return new Promise((resolve) => {
-        const loader = new THREE.GLTFLoader();
+        const loader = new GLTFLoader(); // Use GLTFLoader directly
         loader.load(
             url,
             (gltf) => resolve(gltf),
