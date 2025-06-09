@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monk Gesture Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Character with Gesture Recognition</title>
     <link rel="stylesheet" href="style.css">
 
     <script type="importmap">
@@ -15,11 +15,14 @@
         }
     </script>
 
-    <script type="module" src="script.js"></script> 
-    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.8.2/dist/nipplejs.min.js"></script>
-    </head>
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+    <script src="script.js" type="module"></script>
+</head>
 <body>
     <div id="canvas-container"></div>
+    <div id="joystick-wrapper"></div>
+    <button id="reset-btn">Reset Position</button>
+    
     <div id="hud-container">
         <div id="tracking-status">Initializing hand tracking...</div>
         <div id="gesture-display"></div>
@@ -27,7 +30,6 @@
             <div id="health-bar-fill"></div>
         </div>
     </div>
-    <div id="joystick-wrapper"></div>
-    <button id="reset-btn">Reset Position</button>
-</body>
+
+    </body>
 </html>
