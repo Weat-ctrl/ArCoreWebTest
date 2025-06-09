@@ -1,53 +1,105 @@
-import * as THREE from 'three'; // This will now resolve via importmap
-import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'; // This will now resolve via importmap
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // Ensure GLTFLoader is also imported this way if used
-import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"; // This is already a full CDN path, so it's fine.
+import * as THREE from 'three';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
+// nipplejs is loaded as a global script in index.html, so no import needed here if that's the case.
+
+console.log("SCRIPT START: script.js is loading!");
 
 // Scene Setup
 const container = document.getElementById('canvas-container');
+console.log("Container element:", container);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000); // Black background for easier visibility of text
+console.log("Three.js Scene initialized.");
 
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const cameraOffset = new THREE.Vector3(0, 3, -8);
+console.log("Camera created.");
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
+console.log("WebGL Renderer initialized and appended.");
 
 // --- CSS2DRenderer Setup for HUD ---
-const css2dRenderer = new CSS2DRenderer();
-css2dRenderer.setSize(window.innerWidth, window.innerHeight);
-css2dRenderer.domElement.style.position = 'absolute';
-css2dRenderer.domElement.style.top = '0px';
-// IMPORTANT: Append to the specific HUD container, not directly to body
-document.getElementById('hud-container').appendChild(css2dRenderer.domElement);
+let css2dRenderer;
+let hud; // Make hud globally accessible for resize handler
+let trackingStatus2D, gestureDisplay2D, healthBar2D; // Make these globally accessible too
+let trackingStatusElement, gestureDisplayElement, healthBarContainerElement, healthBarFillElement;
 
-// Create a Three.js Object3D to hold all our CSS2DObjects
-const hud = new THREE.Object3D();
-scene.add(hud);
 
-// Get the actual HTML elements
-const trackingStatusElement = document.getElementById('tracking-status');
-const gestureDisplayElement = document.getElementById('gesture-display');
-const healthBarContainerElement = document.getElementById('health-bar-container');
-const healthBarFillElement = document.getElementById('health-bar-fill');
+console.log("Attempting CSS2DRenderer setup...");
+try {
+    css2dRenderer = new CSS2DRenderer();
+    console.log("CSS2DRenderer instance created.");
 
-// Create CSS2DObjects for the HTML elements
-const trackingStatus2D = new CSS2DObject(trackingStatusElement);
-trackingStatus2D.position.set(- (window.innerWidth / 2) + 120, (window.innerHeight / 2) - 50, 0); // Position top-left of screen
-hud.add(trackingStatus2D);
+    css2dRenderer.setSize(window.innerWidth, window.innerHeight);
+    css2dRenderer.domElement.style.position = 'absolute';
+    css2dRenderer.domElement.style.top = '0px';
+    css2dRenderer.domElement.style.pointerEvents = 'none'; // Allows clicks to pass through to the canvas
+    
+    const hudContainer = document.getElementById('hud-container');
+    console.log("HUD Container element:", hudContainer); // Check if hud-container is found
 
-const gestureDisplay2D = new CSS2DObject(gestureDisplayElement);
-gestureDisplay2D.position.set(0, 0, 0); // Position at the center of the HUD object (which is at origin)
-hud.add(gestureDisplay2D);
+    if (hudContainer) {
+        hudContainer.appendChild(css2dRenderer.domElement);
+        console.log("CSS2DRenderer DOM element appended to hud-container.");
+    } else {
+        console.error("Error: #hud-container not found! Appending CSS2DRenderer to body as fallback.");
+        document.body.appendChild(css2dRenderer.domElement);
+    }
+    
+    // Create a Three.js Object3D to hold all our CSS2DObjects
+    hud = new THREE.Object3D();
+    scene.add(hud);
+    console.log("HUD Object3D added to scene.");
 
-const healthBar2D = new CSS2DObject(healthBarContainerElement);
-healthBar2D.position.set((window.innerWidth / 2) - 120, (window.innerHeight / 2) - 50, 0); // Position top-right
-hud.add(healthBar2D);
+    // Get the actual HTML elements
+    trackingStatusElement = document.getElementById('tracking-status');
+    gestureDisplayElement = document.getElementById('gesture-display');
+    healthBarContainerElement = document.getElementById('health-bar-container');
+    healthBarFillElement = document.getElementById('health-bar-fill');
+
+    console.log("HTML elements found:", { trackingStatusElement, gestureDisplayElement, healthBarContainerElement, healthBarFillElement });
+
+    // Create CSS2DObjects for the HTML elements
+    // These positions are in 3D world coordinates.
+    // For a screen-fixed HUD, it's often best to make the HUD itself a child of the camera,
+    // so its local position (0,0,0) is the camera's position.
+    // Then adjust positions relative to the camera.
+    // For now, these are rough estimates for placing them in the scene for visibility.
+    // We'll adjust them in the resize listener for true responsiveness.
+    trackingStatus2D = new CSS2DObject(trackingStatusElement);
+    hud.add(trackingStatus2D);
+    console.log("trackingStatus2D created and added.");
+
+    gestureDisplay2D = new CSS2DObject(gestureDisplayElement);
+    hud.add(gestureDisplay2D);
+    console.log("gestureDisplay2D created and added.");
+
+    healthBar2D = new CSS2DObject(healthBarContainerElement);
+    hud.add(healthBar2D);
+    console.log("healthBar2D created and added.");
+
+    // Set initial positions (will be adjusted in resize handler)
+    // The resize handler will be called automatically after init, so these might be redundant initially.
+    trackingStatus2D.position.set(-5, 3, -10); // Example initial world position
+    gestureDisplay2D.position.set(0, 0, -10); // Example initial world position
+    healthBar2D.position.set(5, 3, -10); // Example initial world position
+
+
+} catch (e) {
+    console.error("ERROR DURING CSS2DRenderer SETUP:", e);
+    // If an error occurs here, ensure the rest of the script still tries to run
+    // though the HUD might not work.
+}
+console.log("Finished CSS2DRenderer setup attempt.");
+// --- END CSS2DRenderer Debug Block ---
+
 
 // Example health variable (for later use)
 let playerHealth = 100;
@@ -61,7 +113,7 @@ const groundOffset = 0.1;
 
 // Character
 let monk, skycastleModel;
-let mixer, idleAction, runAction, attack1Action, attack2Action, currentAction; // Now properly scoped
+let mixer, idleAction, runAction, attack1Action, attack2Action, currentAction;
 const moveDirection = new THREE.Vector2();
 const moveSpeed = 20;
 let isMoving = false;
@@ -86,15 +138,17 @@ let lastAttackAnimation = null; // Re-introduced for alternation
 
 // Model Loader
 function loadModel(url) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => { // Added reject for proper error handling
         const loader = new GLTFLoader(); // Use GLTFLoader directly
         loader.load(
             url,
             (gltf) => resolve(gltf),
-            undefined,
+            undefined, // onProgress
             (error) => {
                 console.warn(`Failed to load model from ${url}. Creating fallback. Error:`, error);
-                resolve(createFallbackModel());
+                // Instead of just resolving with a fallback, you might want to reject
+                // for critical models like the monk, or handle fallback specifically.
+                resolve(createFallbackModel()); // Still resolve with fallback for now
             }
         );
     });
@@ -110,6 +164,7 @@ function createFallbackModel() {
 
 // Initialize
 async function init() {
+    console.log("init() function called.");
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
 
@@ -125,8 +180,10 @@ async function init() {
     directionalLight.shadow.camera.top = 20;
     directionalLight.shadow.camera.bottom = -20;
     scene.add(directionalLight);
+    console.log("Lights added.");
 
     try {
+        console.log("Attempting to load models...");
         const skycastle = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/scenes/skycastle.glb');
         skycastleModel = skycastle.scene;
         skycastleModel.traverse((node) => {
@@ -135,6 +192,7 @@ async function init() {
             }
         });
         scene.add(skycastleModel);
+        console.log("Skycastle loaded.");
 
         const monkGLTF = await loadModel('https://weat-ctrl.github.io/ArCoreWebTest/Monk.gltf');
         monk = monkGLTF.scene;
@@ -149,16 +207,29 @@ async function init() {
         // *** Disable monk rendering ***
         monk.visible = false;
         snapToGround();
+        console.log("Monk loaded and hidden.");
+
 
         setupAnimations(monkGLTF);
+        console.log("Animations setup.");
         setupJoystick();
+        console.log("Joystick setup.");
         setupResetButton();
+        console.log("Reset button setup.");
         await setupGestureRecognizer(); // Initialize gesture recognizer
+        console.log("Gesture Recognizer setup complete.");
+        
+        // Initial call to resize handler to correctly position HUD elements
+        window.dispatchEvent(new Event('resize')); 
+
         animate();
+        console.log("Animation loop started.");
     } catch (error) {
         console.error("Initialization error:", error);
-        trackingStatusElement.textContent = `Error initializing: ${error.message}`;
-        trackingStatusElement.style.color = '#ff0000';
+        if (trackingStatusElement) { // Check if element exists before updating
+            trackingStatusElement.textContent = `Error initializing: ${error.message}`;
+            trackingStatusElement.style.color = '#ff0000';
+        }
     }
 }
 
@@ -192,7 +263,6 @@ function resetMonkPosition() {
 function setupAnimations(gltf) {
     if (!gltf.animations?.length) {
         console.warn("No animations found in GLTF model.");
-        // If no animations, ensure mixer is still defined for safety, but actions might be null
         mixer = new THREE.AnimationMixer(monk);
         idleAction = null;
         runAction = null;
@@ -204,7 +274,6 @@ function setupAnimations(gltf) {
 
     mixer = new THREE.AnimationMixer(monk);
 
-    // More robust way to find animations, using a fallback to the first animation if specific names aren't found
     const findAnimation = (names, fallback) => {
         for (const name of names) {
             const action = gltf.animations.find(a => a.name.toLowerCase().includes(name.toLowerCase()));
@@ -214,16 +283,14 @@ function setupAnimations(gltf) {
     };
 
     idleAction = findAnimation(['idle', 'stand'], gltf.animations[0]);
-    runAction = findAnimation(['run', 'walk'], gltf.animations[0]); // Added 'walk' as a common alternative
-    // IMPORTANT: Use the exact names from your GLTF file if known, or common patterns
-    attack1Action = findAnimation(['attack', 'attack1', 'punch'], gltf.animations[0]); // Assuming 'Attack' as the primary attack
-    attack2Action = findAnimation(['attack2', 'kick', 'special'], gltf.animations[0]); // Assuming 'Attack2' as the secondary attack
+    runAction = findAnimation(['run', 'walk'], gltf.animations[0]);
+    attack1Action = findAnimation(['attack', 'attack1', 'punch'], gltf.animations[0]);
+    attack2Action = findAnimation(['attack2', 'kick', 'special'], gltf.animations[0]);
 
-    // Ensure they are not null, if no suitable animation was found, default to idleAction
     if (!idleAction) {
         console.warn("Idle animation not found, creating a dummy action.");
-        idleAction = mixer.clipAction(new THREE.AnimationClip('dummyIdle', 0, [])); // Create an empty clip
-        idleAction.play(); // Play dummy action to set currentAction
+        idleAction = mixer.clipAction(new THREE.AnimationClip('dummyIdle', 0, []));
+        idleAction.play();
     }
     if (!runAction) {
         console.warn("Run animation not found, falling back to Idle.");
@@ -235,15 +302,13 @@ function setupAnimations(gltf) {
     }
     if (!attack2Action) {
         console.warn("Attack2 animation not found, falling back to Attack1.");
-        attack2Action = attack1Action; // Fallback to Attack1 if Attack2 isn't present
+        attack2Action = attack1Action;
     }
 
-    // Set initial action
     idleAction.play();
     currentAction = idleAction;
-    lastAttackAnimation = attack2Action; // Initialize to attack2 so the first attack is attack1
+    lastAttackAnimation = attack2Action;
 
-    // Listener to return to idle/run after attack animations complete
     mixer.addEventListener('finished', (e) => {
         if ((e.action === attack1Action || e.action === attack2Action) && currentAction === e.action) {
             if (!isMoving) {
@@ -272,7 +337,7 @@ function setupJoystick() {
         moveDirection.set(data.vector.x, data.vector.y);
         if (!isMoving) {
             isMoving = true;
-            if (currentAction !== runAction && runAction) { // Ensure runAction exists
+            if (currentAction !== runAction && runAction) {
                 currentAction?.fadeOut(0.2);
                 runAction?.reset().fadeIn(0.2).play();
                 currentAction = runAction;
@@ -283,7 +348,7 @@ function setupJoystick() {
     joystick.on('end', () => {
         moveDirection.set(0, 0);
         isMoving = false;
-        if (currentAction !== idleAction && idleAction) { // Ensure idleAction exists
+        if (currentAction !== idleAction && idleAction) {
             currentAction?.fadeOut(0.2);
             idleAction?.reset().fadeIn(0.2).play();
             currentAction = idleAction;
@@ -310,39 +375,44 @@ async function setupGestureRecognizer() {
             numHands: 1
         }
     );
+    console.log("Gesture Recognizer initialized.");
 
     videoElement = document.createElement('video');
     videoElement.style.display = 'none';
     videoElement.autoplay = true;
     videoElement.playsInline = true;
     document.body.appendChild(videoElement);
+    console.log("Video element created.");
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         videoElement.srcObject = stream;
         videoElement.onloadedmetadata = () => {
             enableWebcam = true;
-            console.log("Webcam loaded successfully.");
-            trackingStatusElement.textContent = 'Webcam active. Waiting for gesture...'; // Update HTML element directly
-            gestureDisplayElement.style.display = 'block'; // Show the gesture display container
-            healthBarContainerElement.style.display = 'block'; // Show health bar
-            displayCurrentGesture(); // Call this to show the first gesture
+            console.log("Webcam loaded successfully. Stream active.");
+            if (trackingStatusElement) trackingStatusElement.textContent = 'Webcam active. Waiting for gesture...';
+            if (gestureDisplayElement) gestureDisplayElement.style.display = 'block';
+            if (healthBarContainerElement) healthBarContainerElement.style.display = 'block';
+            
+            displayCurrentGesture();
             videoElement.play();
-            recognizeGestures(); // Start gesture recognition loop
+            recognizeGestures();
         };
     } catch (err) {
         console.error("Error accessing camera:", err);
-        trackingStatusElement.textContent = 'Camera access denied or error!'; // Update HTML element directly
-        trackingStatusElement.style.color = '#ff0000';
-        gestureDisplayElement.style.display = 'none';
-        healthBarContainerElement.style.display = 'none';
+        if (trackingStatusElement) {
+            trackingStatusElement.textContent = 'Camera access denied or error!';
+            trackingStatusElement.style.color = '#ff0000';
+        }
+        if (gestureDisplayElement) gestureDisplayElement.style.display = 'none';
+        if (healthBarContainerElement) healthBarContainerElement.style.display = 'none';
     }
 }
 
 // *** Gesture Recognition Loop ***
 let lastVideoTime = -1;
 async function recognizeGestures() {
-    if (!gestureRecognizer || !enableWebcam || !videoElement.videoWidth) {
+    if (!gestureRecognizer || !enableWebcam || !videoElement || !videoElement.videoWidth) {
         requestAnimationFrame(recognizeGestures);
         return;
     }
@@ -374,106 +444,96 @@ function onGestureResults(results) {
     let detectedCategoryName = 'None';
 
     if (results.gestures.length > 0) {
-        // Ensure there's a recognized gesture and it has a category name
         if (results.gestures[0] && results.gestures[0][0]) {
              detectedCategoryName = results.gestures[0][0].categoryName;
              detectedEmoji = gestureEmojiMap[detectedCategoryName] || '';
         }
     }
 
-    trackingStatusElement.textContent = `Tracking: ${detectedEmoji || '...'}`; // Update HTML element directly
-    gestureDisplayElement.textContent = currentExpectedEmoji; // Always display the target gesture
+    if (trackingStatusElement) trackingStatusElement.textContent = `Tracking: ${detectedEmoji || '...'}`;
+    if (gestureDisplayElement) gestureDisplayElement.textContent = currentExpectedEmoji;
 
-    // Update health bar (example)
-    // For demonstration, let's say successful gestures heal, wrong gestures damage
-    // This is just an example, you'd integrate this with your game logic
     if (detectedEmoji === currentExpectedEmoji && (currentTime - lastGestureProcessedTime >= GESTURE_DEBOUNCE_MS)) {
-        playerHealth = Math.min(100, playerHealth + 5); // Heal on correct gesture
+        playerHealth = Math.min(100, playerHealth + 5);
         updateHealthBar();
     } else if (detectedEmoji !== '' && detectedEmoji !== 'None' && detectedEmoji !== currentExpectedEmoji && (currentTime - lastGestureProcessedTime >= GESTURE_DEBOUNCE_MS)) {
-        // Only damage on wrong gesture *if* we are ready for a new gesture (not debouncing from a previous success)
-        playerHealth = Math.max(0, playerHealth - 5); // Damage on wrong gesture
+        playerHealth = Math.max(0, playerHealth - 5);
         updateHealthBar();
     }
+    
+    if (!gestureDisplayElement) return; // Prevent errors if element is null
 
-
-    // Check if enough time has passed since the last successful gesture
     if (currentTime - lastGestureProcessedTime < GESTURE_DEBOUNCE_MS) {
-        // If within debounce period, ignore new detections for progression, but still show wrong gesture
         if (detectedEmoji !== currentExpectedEmoji && detectedEmoji !== '') {
             gestureDisplayElement.style.color = 'red';
         } else if (detectedEmoji === currentExpectedEmoji) {
-            // Keep it green if it's the right one and still debouncing
             gestureDisplayElement.style.color = 'green';
         } else {
-             // Revert to default if no hand or 'None' detected
              gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
         }
-        return; // Exit early if we are debouncing
+        return;
     }
 
-    // If we reach here, we are outside the debounce period, so we can process a new gesture for progression
     if (detectedEmoji === currentExpectedEmoji) {
         gestureDisplayElement.style.color = 'green';
         console.log(`Correct gesture '${detectedCategoryName}' (${detectedEmoji}) performed!`);
 
-        // *** Trigger Monk Attack (now properly alternating) ***
         let nextAttackAction;
         if (lastAttackAnimation === attack1Action) {
             nextAttackAction = attack2Action;
         } else {
             nextAttackAction = attack1Action;
         }
-        lastAttackAnimation = nextAttackAction; // Store which attack was just played
+        lastAttackAnimation = nextAttackAction;
 
-        if (currentAction !== nextAttackAction && nextAttackAction) { // Ensure nextAttackAction is not null
+        if (currentAction !== nextAttackAction && nextAttackAction) {
             currentAction?.fadeOut(0.2);
-            nextAttackAction.reset().fadeIn(0.2).play(); // Use .play() on the action
+            nextAttackAction.reset().fadeIn(0.2).play();
             currentAction = nextAttackAction;
         }
 
-        lastGestureProcessedTime = currentTime; // Mark this time as when a successful gesture was processed
+        lastGestureProcessedTime = currentTime;
 
         setTimeout(() => {
             currentGestureIndex = (currentGestureIndex + 1) % gestureQueue.length;
-            displayCurrentGesture(); // Move to next gesture and reset color
+            displayCurrentGesture();
         }, GESTURE_FLASH_DURATION_MS);
 
     } else if (detectedEmoji !== '' && detectedEmoji !== 'None') {
-        // Only flash red for explicitly wrong gestures, not for "None" or no hand detected
         gestureDisplayElement.style.color = 'red';
         setTimeout(() => {
-            if (gestureDisplayElement.style.color === 'red') { // Only revert if still red
+            if (gestureDisplayElement.style.color === 'red') {
                  gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
             }
         }, 200);
     } else {
-        // If no relevant gesture is detected (e.g., hand not visible, "None" gesture),
-        // ensure the display color is the default for the *target* gesture.
         gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
     }
 }
 
-
 // *** Function to display the currently targeted gesture from the queue ***
 function displayCurrentGesture() {
-    gestureDisplayElement.textContent = gestureQueue[currentGestureIndex];
-    gestureDisplayElement.style.display = 'block'; // Ensure it's visible
-    gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)'; // Ensure default color for the next gesture
+    if (gestureDisplayElement) { // Check if element exists
+        gestureDisplayElement.textContent = gestureQueue[currentGestureIndex];
+        gestureDisplayElement.style.display = 'block';
+        gestureDisplayElement.style.color = 'rgba(255,255,255,0.7)';
+    }
 }
 
 // Function to update the health bar
 function updateHealthBar() {
-    healthBarFillElement.style.width = `${playerHealth}%`;
-    let color;
-    if (playerHealth > 70) {
-        color = '#4CAF50'; // Green
-    } else if (playerHealth > 30) {
-        color = '#FFC107'; // Yellow
-    } else {
-        color = '#F44336'; // Red
+    if (healthBarFillElement) { // Check if element exists
+        healthBarFillElement.style.width = `${playerHealth}%`;
+        let color;
+        if (playerHealth > 70) {
+            color = '#4CAF50'; // Green
+        } else if (playerHealth > 30) {
+            color = '#FFC107'; // Yellow
+        } else {
+            color = '#F44336'; // Red
+        }
+        healthBarFillElement.style.backgroundColor = color;
     }
-    healthBarFillElement.style.backgroundColor = color;
 }
 
 function updateMovement(delta) {
@@ -563,19 +623,63 @@ function animate() {
     checkGround();
     updateCamera();
     renderer.render(scene, camera);
-    css2dRenderer.render(scene, camera); // Render the CSS2D content as well
+    
+    // Only call css2dRenderer.render if it was successfully initialized
+    if (css2dRenderer) {
+        css2dRenderer.render(scene, camera); // Render the CSS2D content as well
+    }
 }
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    css2dRenderer.setSize(window.innerWidth, window.innerHeight); // Update CSS2DRenderer size
     
-    // Adjust CSS2DObject positions on resize for responsiveness
-    trackingStatus2D.position.set(- (window.innerWidth / 2) + 120, (window.innerHeight / 2) - 50, 0);
-    healthBar2D.position.set((window.innerWidth / 2) - 120, (window.innerHeight / 2) - 50, 0);
-    // gestureDisplay2D remains centered (0,0,0) relative to its parent hud
+    if (css2dRenderer && trackingStatus2D && healthBar2D) {
+        css2dRenderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Positioning CSS2DObjects for a screen-fixed HUD.
+        // It's often easier to make the HUD Object3D (hud) a child of the camera.
+        // Then, the positions of trackingStatus2D, gestureDisplay2D, healthBar2D
+        // are relative to the camera's local coordinate system.
+
+        // Example: If HUD is child of camera, (0,0,0) is camera center.
+        // To place elements in screen corners, you might need to manually calculate
+        // positions based on camera frustum and viewport size, or just use trial-and-error
+        // with small world coordinates if the hud is sufficiently far from camera.
+
+        // Let's assume hud remains at scene origin for now, and we adjust child positions
+        // to approximate screen corners. This is still a compromise for truly fixed 2D HUD.
+        // For true 2D fixed HUD, the hud object should be a child of the camera.
+        // For this code, we'll try to put them in the visible frustum.
+
+        // Adjust these values based on your desired layout and camera's FOV/aspect
+        // These are *world coordinates* where the 2D elements will appear.
+        // They will be positioned relative to the center of the camera's view (if hud is parented to camera)
+        // or relative to the scene's origin if hud is at (0,0,0).
+        // Let's make them children of the camera for a true screen-fixed effect.
+        // This requires a small change in setup:
+        // Instead of `scene.add(hud);`, use `camera.add(hud);`
+        // Then hud elements' local positions are relative to the camera.
+
+        // For now, let's just make sure they are visible roughly where intended in 3D space:
+        // (These values are placeholders, you'll need to fine-tune based on your scene)
+        const depth = -5; // Z-position: how far in front of the camera the HUD appears (smaller means closer)
+        const aspectRatio = window.innerWidth / window.innerHeight;
+        const vFOV = camera.fov * Math.PI / 180; // convert fov to radians
+        const height = 2 * Math.tan( vFOV / 2 ) * Math.abs(depth); // visible height at depth
+        const width = height * aspectRatio; // visible width at depth
+
+        // Top-left
+        if (trackingStatus2D) trackingStatus2D.position.set(-width / 2 + 1, height / 2 - 0.5, depth);
+        // Center
+        if (gestureDisplay2D) gestureDisplay2D.position.set(0, 0, depth);
+        // Top-right
+        if (healthBar2D) healthBar2D.position.set(width / 2 - 1, height / 2 - 0.5, depth);
+    }
 });
 
+
+console.log("Calling init().");
 init();
+console.log("End of script.js.");
