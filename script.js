@@ -483,8 +483,8 @@ async function setupGestureRecognizer() {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: 'user',
-                width: { ideal: 640 }, // Lowered resolution for performance
-                height: { ideal: 480 } // Lowered resolution for performance
+                width: { ideal: 320 }, // Lowered resolution for performance
+                height: { ideal: 240 } // Lowered resolution for performance
             }
         });
         videoElement.srcObject = stream;
@@ -513,7 +513,7 @@ async function setupGestureRecognizer() {
 // *** Gesture Recognition Loop ***
 let lastVideoTime = -1;
 let lastRecognitionTime = 0;
-const recognitionInterval = 100; // Recognize every 100ms (10 FPS for recognition)
+const recognitionInterval = 200; // Recognize every 100ms (10 FPS for recognition)
 
 async function recognizeGestures() {
     if (!gestureRecognizer || !enableWebcam || !videoElement || !videoElement.videoWidth) {
