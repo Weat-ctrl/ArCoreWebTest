@@ -1,127 +1,186 @@
+/* style.css */
+
 body {
     margin: 0;
-    padding: 0;
-    overflow: hidden;
-    touch-action: none; /* Prevents default browser touch behaviors like scrolling/zooming */
-    position: fixed; /* Ensures body takes full viewport and prevents scrolling */
-    width: 100%;
-    height: 100%;
-    font-family: Arial, sans-serif;
-    background-color: black; /* Just in case your canvas doesn't cover everything */
+    overflow: hidden; /* Prevent scrolling */
+    background-color: #000;
 }
 
 #canvas-container {
     position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    top: 0; /* Ensure it starts at the top-left */
+    /* NEW: Initially hidden, will fade in */
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+}
+
+/* NEW: Class added by JS when loading is complete */
+body.loaded #canvas-container {
+    opacity: 1;
+}
+
+/* NEW: Loading Screen Styles */
+#loading-screen {
+    position: fixed;
+    top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000; /* Black background */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; /* Ensure it's on top of everything */
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 2em;
+    text-align: center;
 }
 
-#joystick-wrapper {
-    position: absolute;
-    bottom: 30px;
-    left: 30px;
-    width: 120px;
-    height: 120px;
-    z-index: 100; /* High z-index to be on top */
-    opacity: 0.7;
+#loading-bar-container {
+    width: 80%;
+    max-width: 400px;
+    height: 20px;
+    background-color: #333; /* Dark gray background for the bar */
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 20px;
 }
 
-#reset-btn {
-    position: absolute;
-    bottom: 30px;
-    right: 30px;
-    z-index: 100; /* High z-index to be on top */
-    padding: 10px 20px;
-    background: rgba(255,255,255,0.7);
-    color: black; /* Better contrast for light button */
-    border: none;
-    border-radius: 5px;
-    font-size: 16px;
-    cursor: pointer;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3); /* Add a subtle shadow */
-}
-#reset-btn:hover {
-    background: rgba(255,255,255,0.9); /* Slightly more opaque on hover */
+#loading-bar-fill {
+    width: 0%;
+    height: 100%;
+    background-color: #00ff00; /* Green loading bar fill */
+    border-radius: 10px;
+    transition: width 0.1s linear; /* Smooth progress updates */
 }
 
+#loading-text {
+    margin-top: 10px;
+    font-size: 0.8em;
+    color: #bbb; /* Lighter text color */
+}
 
-/* --- HUD Container Styles --- */
+/* HUD elements (keep for later steps, adjust as needed) */
 #hud-container {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none; /* Allows clicks/touches to pass through to the canvas */
-    z-index: 101; /* Ensure it's above the 3D scene and even controls if needed */
-
-    /* Flexbox for centering #gesture-display (it will be the only flex item if others are absolute) */
+    pointer-events: none; /* Allow interaction with canvas below */
     display: flex;
-    flex-direction: column; /* Stacks items vertically */
-    align-items: center;   /* Centers horizontally */
-    justify-content: center; /* Centers vertically */
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    z-index: 10;
 }
 
-/* Adjust styles for children of hud-container */
-#tracking-status {
-    position: absolute; /* Positioned relative to #hud-container */
-    top: 20px;
-    left: 20px;
-    background: rgba(0,0,0,0.7);
+.hud-element {
+    background: rgba(0, 0, 0, 0.6);
     color: white;
-    padding: 10px 15px;
-    border-radius: 20px;
-    font-size: 1.8vh; /* Adjusted: Use vh for responsive font size */
-    pointer-events: none; /* Ensure it doesn't block interaction */
-    /* Remove previous transform as it's not needed with absolute positioning and adjusted font size */
-    /* transform: none; */
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin: 10px;
+    font-family: 'Arial', sans-serif;
+    font-size: 1.2em;
+    text-align: center;
+}
+
+#tracking-status {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
 }
 
 #gesture-display {
-    /* Centered by #hud-container's flexbox properties */
-    /* THIS IS THE MAIN CHANGE FOR FONT SIZE */
-    font-size: 8vh; /* Adjusted: Use vh for responsive font size (8% of viewport height) */
-    /* You might want to adjust padding or max-width too if the emoji is still too big */
-    padding: 1.5vh 2.5vh; /* Responsive padding */
-    max-width: 90vw; /* Ensure it doesn't get too wide on very wide screens */
-    color: rgba(255,255,255,0.7); /* Default white/grey */
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.5); /* Pop out */
-    pointer-events: none; /* Ensure it doesn't block interaction */
-    display: none; /* Hidden until loaded by JS */
-    transition: color 0.1s ease-out; /* Smooth color change */
-    
-    /* These properties are correct for flexbox child */
-    position: static; /* Let flexbox handle positioning */
-    transform: none;  /* Remove any transforms from previous absolute positioning attempts */
-    white-space: nowrap; /* Keep text/emoji on one line */
-    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 2em;
+    font-weight: bold;
+    color: skyblue; /* Default color for gesture prompt */
+    animation: pulse 1.5s infinite alternate;
+    display: none; /* Hidden until webcam active */
 }
 
-/* Example Health Bar Styles */
+@keyframes pulse {
+    from {
+        text-shadow: 0 0 5px rgba(135, 206, 235, 0.5);
+    }
+    to {
+        text-shadow: 0 0 15px rgba(135, 206, 235, 1);
+    }
+}
+
 #health-bar-container {
-    position: absolute; /* Positioned relative to #hud-container */
+    position: absolute;
     top: 20px;
     right: 20px;
-    width: 20vh; /* Adjusted: Use vh for responsive width */
-    height: 3vh; /* Adjusted: Use vh for responsive height */
-    background-color: rgba(0,0,0,0.5);
-    border-radius: 10px;
-    overflow: hidden; /* Important to keep the fill inside */
-    display: none; /* Hidden initially */
-    pointer-events: none; /* Ensure it doesn't block interaction */
+    width: 200px;
+    height: 25px;
+    background-color: #555;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid white;
+    display: none; /* Hidden until webcam active */
 }
 
 #health-bar-fill {
+    width: 100%;
     height: 100%;
-    width: 100%; /* Start full, JavaScript will change this */
     background-color: #4CAF50; /* Green */
-    border-radius: 10px;
-    transition: width 0.3s ease-out; /* Smooth width changes */
+    transition: width 0.3s ease-out, background-color 0.3s ease-out;
 }
 
-/* Ensure the video element remains hidden */
+#game-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 4em;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 30px 50px;
+    border-radius: 15px;
+    display: none;
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+
+#joystick-wrapper {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 120px;
+    height: 120px;
+    z-index: 100;
+}
+
+#reset-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    z-index: 100;
+}
+
 video {
-    display: none !important;
+    display: none !important; /* Hide the webcam feed */
     }
