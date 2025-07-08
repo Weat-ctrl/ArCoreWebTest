@@ -1,4 +1,3 @@
-// script.js
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -316,7 +315,12 @@ async function preloadAssets() {
         const url = assetsToLoad[key];
         if (url.endsWith('.gltf') || url.endsWith('.glb')) {
             // This promise stores the GLTF object (which contains the .scene)
-            loadPromises.push(gltfLoader.loadAsync(url).then(gltf => loadedAssets[key] = gltf));
+            loadPromises.push(gltfLoader.loadAsync(url).then(gltf => {
+                // --- ADDED DEBUG LOG HERE ---
+                console.log(`DEBUG: GLTF loaded for key '${key}' from URL '${url}':`, gltf);
+                // ----------------------------
+                loadedAssets[key] = gltf;
+            }));
         } else if (url.endsWith('.mp3')) {
             // Load other sounds into the SoundManager (ambient music, SFX, etc.)
             // Skip loading_music here as it's handled above
