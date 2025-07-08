@@ -109,7 +109,8 @@ let loadingAudio, ambientAudio; // Specific audio references
 class SoundManager {
     constructor(listener) {
         this.listener = listener;
-        this.audioLoader = new THREE.AudioLoader();
+        // Use the common audioLoader passed from the main script which is linked to LoadingManager
+        this.audioLoader = audioLoader;
         this.sounds = {};
         this.currentMusic = null; // To track currently playing music track
     }
@@ -199,9 +200,10 @@ class SoundManager {
 
 
 // --- Asset Loaders & Loading Manager ---
-const gltfLoader = new GLTFLoader();
-const audioLoader = new THREE.AudioLoader(); // Dedicated audio loader
 const loadingManager = new THREE.LoadingManager();
+// IMPORTANT: Pass the loadingManager to the loaders!
+const gltfLoader = new GLTFLoader(loadingManager);
+const audioLoader = new THREE.AudioLoader(loadingManager); // Now linked to the manager
 
 // Define assets to load for the initial screen and ambient music
 const assetsToLoad = {
@@ -218,6 +220,7 @@ loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
     const progress = (itemsLoaded / itemsTotal) * 100;
     loadingBarFill.style.width = `${progress}%`;
     loadingText.textContent = `Loading... ${Math.round(progress)}%`;
+    console.log(`Loading progress: ${url} - ${itemsLoaded}/${itemsTotal} (${Math.round(progress)}%)`);
 };
 
 loadingManager.onLoad = async () => {
@@ -227,6 +230,28 @@ loadingManager.onLoad = async () => {
         loadingAudio.stop();
     }
 
+    // IMPORTANT: Check if gsap is defined before using it
+    if (typeof gsap === 'undefined') {
+        console.error("GSAP is not defined! Loading screen cannot fade out.");
+        loadingScreen.style.display = 'none'; // Fallback: immediately hide if GSAP isn't there
+        document.body.classList.add('loaded');
+        gameRunning = true;
+        initSceneContent();
+        // Attempt to play ambient music without fade-in if GSAP is missing
+        if (audioListener && audioListener.context.state === 'suspended') {
+            try {
+                await audioListener.context.resume();
+                soundManager.playMusic('ambient_music', 0); // No crossfade
+            } catch (e) {
+                console.warn("Could not resume AudioContext without GSAP:", e);
+            }
+        } else {
+             soundManager.playMusic('ambient_music', 0); // No crossfade
+        }
+        return; // Exit if GSAP is missing
+    }
+
+    console.log("GSAP is available, fading out loading screen.");
     // Fade out loading screen using GSAP
     gsap.to(loadingScreen, {
         opacity: 0,
@@ -264,7 +289,7 @@ async function preloadAssets() {
     // Initialize AudioListener and SoundManager *before* loading audio
     audioListener = new THREE.AudioListener();
     camera.add(audioListener); // Add listener to camera
-    soundManager = new SoundManager(audioListener);
+    soundManager = new SoundManager(audioListener); // Pass the audioLoader instance
 
     // Load the loading music separately and play it immediately
     loadingAudio = new THREE.Audio(audioListener);
@@ -475,7 +500,26 @@ window.addEventListener('resize', () => {
 
 // Start the asset preloading process when the script loads
 preloadAssets();
+Key Changes:
 
+GLTFLoader and AudioLoader instantiation:
 
+JavaScript
+const loadingManager = new THREE.LoadingManager();
+const gltfLoader = new GLTFLoader(loadingManager); // Pass manager here!
+const audioLoader = new THREE.AudioLoader(loadingManager); // Pass manager here!
+This tells these loaders to report their progress to the loadingManager, which then triggers the onProgress callback, finally updating your loading bar.
 
-G
+GSAP Debugging and Fallback:
+
+JavaScript
+if (typeof gsap === 'undefined') {
+    console.error("GSAP is not defined! Loading screen cannot fade out.");
+    loadingScreen.style.display = 'none'; // Fallback: immediately hide if GSAP isn't there
+    document.body.classList.add('loaded');
+    gameRunning = true;
+    initSceneContent();
+    // ... (audio resume logic adjusted)
+    return; // Exit if GSAP is missing
+}
+console.log("GSAP is available, fading out loading screen.");
