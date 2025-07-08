@@ -20,7 +20,7 @@ class ShaderParticleEngine {
 // import { Goleling } from './goleling.js';
 // import { Dragon } from './dragon.js';
 // import { OrcSkull } from './miniBoss.js';
-// import { Cleric } from './boss.js';
+// import { Cleric } = './boss.js';
 
 
 console.log("SCRIPT START: script.js is loading!");
@@ -100,6 +100,7 @@ try {
 let gameRunning = false; // Game starts paused during loading
 const clock = new THREE.Clock();
 let monk, skycastleModel; // References to main scene objects
+let particleEngine; // Placeholder for SPE instance
 
 // --- Audio System ---
 let audioListener;
@@ -230,14 +231,19 @@ loadingManager.onLoad = async () => {
         loadingAudio.stop();
     }
 
+    // --- DEBUGGING CONSOLE LOGS ---
+    console.log("DEBUG: Contents of loadedAssets:", loadedAssets);
+    console.log("DEBUG: loadedAssets.skycastle:", loadedAssets.skycastle);
+    console.log("DEBUG: loadedAssets.monk:", loadedAssets.monk);
+    // ----------------------------------------
+
     // IMPORTANT: Check if gsap is defined before using it
     if (typeof gsap === 'undefined') {
         console.error("GSAP is not defined! Loading screen cannot fade out.");
         loadingScreen.style.display = 'none'; // Fallback: immediately hide if GSAP isn't there
         document.body.classList.add('loaded');
-        gameRunning = true;
-        initSceneContent();
-        // Attempt to play ambient music without fade-in if GSAP is missing
+        
+        // Resume AudioContext on user interaction for mobile browser policies
         if (audioListener && audioListener.context.state === 'suspended') {
             try {
                 await audioListener.context.resume();
@@ -248,6 +254,9 @@ loadingManager.onLoad = async () => {
         } else {
              soundManager.playMusic('ambient_music', 0); // No crossfade
         }
+
+        gameRunning = true; // Enable game logic
+        initSceneContent(); // Initialize the scene even without GSAP fade
         return; // Exit if GSAP is missing
     }
 
@@ -263,9 +272,6 @@ loadingManager.onLoad = async () => {
             // Resume AudioContext on user interaction for mobile browser policies
             if (audioListener && audioListener.context.state === 'suspended') {
                 try {
-                    // Create an invisible button or rely on first interaction
-                    // For now, let's assume the user will interact (e.g., joystick move)
-                    // or add a transparent overlay to click
                     await audioListener.context.resume();
                     console.log("AudioContext resumed.");
                     soundManager.playMusic('ambient_music'); // Start ambient music
@@ -309,11 +315,13 @@ async function preloadAssets() {
     for (const key in assetsToLoad) {
         const url = assetsToLoad[key];
         if (url.endsWith('.gltf') || url.endsWith('.glb')) {
+            // This promise stores the GLTF object (which contains the .scene)
             loadPromises.push(gltfLoader.loadAsync(url).then(gltf => loadedAssets[key] = gltf));
         } else if (url.endsWith('.mp3')) {
             // Load other sounds into the SoundManager (ambient music, SFX, etc.)
             // Skip loading_music here as it's handled above
             if (key !== 'loading_music') {
+                // This promise stores the THREE.Audio object
                 loadPromises.push(soundManager.loadSound(key, url, key.includes('music'), key.includes('music')));
             }
         }
@@ -323,8 +331,8 @@ async function preloadAssets() {
     await Promise.all(loadPromises.map(p => {
         // Wrap promises to feed into LoadingManager's progress correctly
         return p.catch(error => {
-            console.error(`Failed to load asset from ${error.request.responseURL}:`, error);
-            return null; // Don't block if one asset fails, but report it
+            console.error(`Failed to load asset from ${error.request.responseURL || url}:`, error);
+            return null; // Don't block if one asset fails, but report it and return null
         });
     }));
 }
@@ -353,6 +361,11 @@ async function initSceneContent() {
 
     try {
         // Load Skycastle (now from loadedAssets cache)
+        // This is where the error likely originates if loadedAssets.skycastle is undefined
+        if (!loadedAssets.skycastle) {
+            console.error("Error: skycastle model is not in loadedAssets. Cannot initialize scene content.");
+            return; // Stop initialization if critical asset is missing
+        }
         skycastleModel = loadedAssets.skycastle.scene;
         skycastleModel.traverse((node) => {
             if (node.isMesh) {
@@ -364,6 +377,11 @@ async function initSceneContent() {
         console.log("Skycastle added to scene.");
 
         // Load Monk (now from loadedAssets cache)
+        // This is where the error likely originates if loadedAssets.monk is undefined
+        if (!loadedAssets.monk) {
+             console.error("Error: monk model is not in loadedAssets. Cannot initialize scene content.");
+             return; // Stop initialization if critical asset is missing
+        }
         monk = loadedAssets.monk.scene;
         monk.traverse((node) => {
             if (node.isMesh) {
