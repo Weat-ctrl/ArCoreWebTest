@@ -500,26 +500,3 @@ window.addEventListener('resize', () => {
 
 // Start the asset preloading process when the script loads
 preloadAssets();
-Key Changes:
-
-GLTFLoader and AudioLoader instantiation:
-
-JavaScript
-const loadingManager = new THREE.LoadingManager();
-const gltfLoader = new GLTFLoader(loadingManager); // Pass manager here!
-const audioLoader = new THREE.AudioLoader(loadingManager); // Pass manager here!
-This tells these loaders to report their progress to the loadingManager, which then triggers the onProgress callback, finally updating your loading bar.
-
-GSAP Debugging and Fallback:
-
-JavaScript
-if (typeof gsap === 'undefined') {
-    console.error("GSAP is not defined! Loading screen cannot fade out.");
-    loadingScreen.style.display = 'none'; // Fallback: immediately hide if GSAP isn't there
-    document.body.classList.add('loaded');
-    gameRunning = true;
-    initSceneContent();
-    // ... (audio resume logic adjusted)
-    return; // Exit if GSAP is missing
-}
-console.log("GSAP is available, fading out loading screen.");
