@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aura Weaver Demo</title>
+    <title>3D Character with Gesture Recognition</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+
     <script type="importmap">
         {
             "imports": {
@@ -14,30 +14,22 @@
             }
         }
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+    <script src="script.js" type="module"></script>
 </head>
 <body>
-    <div id="loading-screen">
-        <div id="loading-bar-container">
-            <div id="loading-bar-fill"></div>
-        </div>
-        <div id="loading-text">Loading... 0%</div>
-    </div>
-
     <div id="canvas-container"></div>
-
+    <div id="joystick-wrapper"></div>
+    <button id="reset-btn">Reset Position</button>
+    
     <div id="hud-container">
-        <div id="tracking-status" class="hud-element">Initializing camera...</div>
-        <div id="gesture-display" class="hud-element"></div>
-        <div id="health-bar-container" class="hud-element">
+        <div id="tracking-status">Initializing hand tracking...</div>
+        <div id="gesture-display"></div>
+        <div id="health-bar-container">
             <div id="health-bar-fill"></div>
         </div>
-        <div id="game-message" class="hud-element" style="display: none;"></div>
     </div>
 
-    <div id="joystick-wrapper"></div>
-    <button id="reset-btn" style="display:none;">Reset Scene</button>
-
-    <script type="module" src="script.js"></script>
-</body>
-</html>
+    </body>
+    </html>
