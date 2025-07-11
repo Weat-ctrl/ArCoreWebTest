@@ -428,7 +428,7 @@ function setupJoystick() {
             if (currentAction !== runAction && runAction) {
                 currentAction?.fadeOut(0.2);
                 runAction?.reset().fadeIn(0.2).play();
-                current健康 = runAction;
+                currentAction = runAction;
             }
         }
     });
